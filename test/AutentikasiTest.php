@@ -165,4 +165,17 @@ final class AutentikasiTest extends TestCase
         self::assertTrue(password_verify(self::SANDI, (string) $user?->kataSandi));
         self::assertFalse(DaftarUser::perluHashBaru((string) $user?->kataSandi));
     }
+
+    public function testHashLamaDiperbaruiDanUserYangDikembalikanMemakaiHashBaru(): void
+    {
+        $lama = password_hash(self::SANDI, PASSWORD_BCRYPT, ['cost' => 10]);
+        $this->db->query('UPDATE "user" SET kata_sandi = ? WHERE id = ?', [$lama, $this->id]);
+
+        $hasil = $this->masuk();
+        $baru  = $this->daftar->cariId($this->id);
+
+        self::assertSame(HasilMasuk::BERHASIL, $hasil->status);
+        self::assertNotSame($lama, $baru?->kataSandi);
+        self::assertSame($baru?->kataSandi, $hasil->user?->kataSandi);
+    }
 }
