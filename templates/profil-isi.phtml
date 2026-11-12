@@ -1,0 +1,134 @@
+<?php
+/**
+ * Isi halaman profil: data diri, ganti kata sandi, dan riwayat login.
+ *
+ * @var AdeMS\Dapur\User\User $user
+ * @var string|null $pesan        pesan berhasil
+ * @var string|null $galat        pesan kesalahan
+ * @var string|null $galatBagian  'nama', 'sandi', atau null (kesalahan umum)
+ * @var string $nama
+ * @var string $alamatProfil
+ * @var int $minimalSandi
+ * @var string $zonaWaktu
+ * @var list<array{waktu: string, peristiwa: string, label: string, lingkup: string, ip: string, perangkat: string, perangkatLengkap: string}> $riwayat
+ * @var string $tokenCsrf
+ * @var string $fieldCsrf
+ */
+$warna = [
+    'masuk'       => 'success',
+    'gagal'       => 'danger',
+    'keluar'      => 'secondary',
+    'ganti_sandi' => 'warning',
+];
+$csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) . '" value="'
+    . $this->escapeHtmlAttr($this->tokenCsrf) . '">';
+?>
+<style>
+    .user-profil-avatar { width: 3.5rem; height: 3.5rem; font-size: 1.35rem; }
+</style>
+<div class="container py-4">
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <span class="user-avatar user-profil-avatar" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+        <div>
+            <h1 class="h3 mb-0"><?= $this->escapeHtml($this->user->nama) ?></h1>
+            <div class="text-body-secondary"><?= $this->escapeHtml($this->user->email) ?></div>
+        </div>
+    </div>
+<?php if ($this->pesan) : ?>
+    <div class="alert alert-success" role="status"><?= $this->escapeHtml($this->pesan) ?></div>
+<?php endif ?>
+<?php if ($this->galat && $this->galatBagian === null) : ?>
+    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+    <div class="row g-4">
+        <div class="col-12 col-lg-5">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Data diri</h2>
+<?php if ($this->galat && $this->galatBagian === 'nama') : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatProfil) ?>">
+                        <?= $csrf ?>
+                        <input type="hidden" name="aksi" value="nama">
+                        <div class="mb-3">
+                            <label class="form-label" for="profil-email">Email</label>
+                            <input class="form-control" id="profil-email" type="email" value="<?= $this->escapeHtmlAttr($this->user->email) ?>" readonly disabled>
+                            <div class="form-text">Email dipakai untuk login dan belum bisa diubah.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="profil-nama">Nama</label>
+                            <input class="form-control" id="profil-nama" name="nama" type="text" maxlength="190" autocomplete="name" required value="<?= $this->escapeHtmlAttr($this->nama) ?>">
+                        </div>
+                        <button type="submit" class="btn btn-success">Simpan nama</button>
+                    </form>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Ganti kata sandi</h2>
+<?php if ($this->galat && $this->galatBagian === 'sandi') : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatProfil) ?>">
+                        <?= $csrf ?>
+                        <input type="hidden" name="aksi" value="sandi">
+                        <!-- Untuk pengelola kata sandi browser: akun mana yang kata sandinya diganti -->
+                        <input type="email" name="email" class="d-none" autocomplete="username" value="<?= $this->escapeHtmlAttr($this->user->email) ?>" readonly tabindex="-1" aria-hidden="true">
+                        <div class="mb-3">
+                            <label class="form-label" for="profil-sandi-lama">Kata sandi sekarang</label>
+                            <input class="form-control" id="profil-sandi-lama" name="sandi_lama" type="password" autocomplete="current-password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="profil-sandi-baru">Kata sandi baru</label>
+                            <input class="form-control" id="profil-sandi-baru" name="sandi_baru" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required aria-describedby="profil-sandi-syarat">
+                            <div class="form-text" id="profil-sandi-syarat">Minimal <?= (int) $this->minimalSandi ?> karakter.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="profil-sandi-ulang">Ulangi kata sandi baru</label>
+                            <input class="form-control" id="profil-sandi-ulang" name="sandi_ulang" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required>
+                        </div>
+                        <p class="form-text">Setelah kata sandi diganti, perangkat lain yang sedang login akan dikeluarkan.</p>
+                        <button type="submit" class="btn btn-success">Ganti kata sandi</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-7">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h5 card-title">Riwayat login</h2>
+                    <p class="card-subtitle small text-body-secondary mb-3"><?= count($this->riwayat) ?> catatan terakhir, waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+<?php if ($this->riwayat === []) : ?>
+                    <p class="mb-0">Belum ada riwayat login.</p>
+<?php else : ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Waktu</th>
+                                    <th scope="col">Peristiwa</th>
+                                    <th scope="col">Perangkat</th>
+                                    <th scope="col">IP</th>
+                                    <th scope="col">Lingkup</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+<?php foreach ($this->riwayat as $b) : ?>
+                                <tr>
+                                    <td class="text-nowrap"><?= $this->escapeHtml($b['waktu']) ?></td>
+                                    <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warna[$b['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($b['label']) ?></span></td>
+                                    <td class="text-nowrap" title="<?= $this->escapeHtmlAttr($b['perangkatLengkap']) ?>"><?= $this->escapeHtml($b['perangkat']) ?></td>
+                                    <td class="text-nowrap"><?= $this->escapeHtml($b['ip']) ?></td>
+                                    <td class="text-nowrap"><?= $this->escapeHtml($b['lingkup']) ?></td>
+                                </tr>
+<?php endforeach ?>
+                            </tbody>
+                        </table>
+                    </div>
+<?php endif ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
