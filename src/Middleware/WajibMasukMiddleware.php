@@ -15,8 +15,9 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * Mengarahkan pengunjung yang belum login ke halaman masuk pintu ini. Status user dan hak aksesnya ke
- * lingkup pintu diperiksa ulang setiap request.
+ * Mengarahkan pengunjung yang belum login ke halaman masuk pintu ini. Status user, hak aksesnya ke
+ * lingkup pintu, dan sidik jari kata sandinya diperiksa ulang setiap request: setelah kata sandi diganti,
+ * session di perangkat lain tidak berlaku lagi.
  */
 final class WajibMasukMiddleware implements MiddlewareInterface
 {
@@ -24,6 +25,8 @@ final class WajibMasukMiddleware implements MiddlewareInterface
     public const SESI_TERAKHIR = 'user.terakhir_aktif';
     /** Alamat yang diminta sebelum login; dituju lagi setelah login berhasil. */
     public const SESI_TUJUAN = 'user.tujuan';
+    /** Sidik jari kata sandi saat login (User::sidikSandi()). */
+    public const SESI_SANDI = 'user.sandi';
 
     public function __construct(
         private readonly DaftarUser $daftar,
@@ -42,11 +45,13 @@ final class WajibMasukMiddleware implements MiddlewareInterface
             ? $this->daftar->cariId($id)
             : null;
 
-        if ($user === null || ! $user->aktif || ! $this->daftar->punyaAkses($user->id, $this->pintu->lingkup)) {
+        if ($user === null || ! $user->aktif || ! $this->sandiSama($sesi, $user)
+            || ! $this->daftar->punyaAkses($user->id, $this->pintu->lingkup)) {
             if ($id !== null) {
                 // Session tidak dihancurkan agar alamat tujuan di bawah tetap tersimpan.
                 $sesi->hapus(self::SESI_USER);
                 $sesi->hapus(self::SESI_TERAKHIR);
+                $sesi->hapus(self::SESI_SANDI);
                 $sesi->gantiId();
             }
 
@@ -64,5 +69,21 @@ final class WajibMasukMiddleware implements MiddlewareInterface
         $sesi->simpan(self::SESI_TERAKHIR, time());
 
         return $handler->handle($request->withAttribute(User::class, $user));
+    }
+
+    /**
+     * Session dari versi 1.0 belum menyimpan sidik jari; sidik jari saat ini dipakai sekali agar user tidak
+     * perlu login ulang setelah pembaruan.
+     */
+    private function sandiSama(Sesi $sesi, User $user): bool
+    {
+        $sidik = $sesi->ambil(self::SESI_SANDI);
+        if ($sidik === null) {
+            $sesi->simpan(self::SESI_SANDI, $user->sidikSandi());
+
+            return true;
+        }
+
+        return is_string($sidik) && hash_equals($user->sidikSandi(), $sidik);
     }
 }
