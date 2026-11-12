@@ -8,7 +8,8 @@ use Laminas\Db\Adapter\Adapter;
 use Laminas\Db\ResultSet\ResultSetInterface;
 
 /**
- * Riwayat login: masuk berhasil, gagal, dan keluar, beserta IP dan perangkat (user agent browser).
+ * Riwayat login: masuk berhasil, gagal, keluar, dan ganti kata sandi, beserta IP dan perangkat (user agent
+ * browser).
  *
  * Berbeda dari PembatasPercobaan yang isinya sengaja dihapus setelah login berhasil, tabel ini menjadi
  * catatan untuk dibaca user dan admin. Login gagal dengan email yang tidak terdaftar dicatat tanpa user,
@@ -17,9 +18,18 @@ use Laminas\Db\ResultSet\ResultSetInterface;
  */
 final class RiwayatMasuk
 {
-    public const MASUK  = 'masuk';
-    public const GAGAL  = 'gagal';
-    public const KELUAR = 'keluar';
+    public const MASUK       = 'masuk';
+    public const GAGAL       = 'gagal';
+    public const KELUAR      = 'keluar';
+    public const GANTI_SANDI = 'ganti_sandi';
+
+    /** Label peristiwa untuk tampilan. */
+    private const LABEL = [
+        self::MASUK       => 'Masuk',
+        self::GAGAL       => 'Gagal',
+        self::KELUAR      => 'Keluar',
+        self::GANTI_SANDI => 'Ganti kata sandi',
+    ];
 
     private const PANJANG_PERANGKAT = 255;
 
@@ -75,6 +85,11 @@ final class RiwayatMasuk
         }
 
         return $baris;
+    }
+
+    public static function label(string $peristiwa): string
+    {
+        return self::LABEL[$peristiwa] ?? $peristiwa;
     }
 
     /** User agent bisa sangat panjang atau berisi byte aneh; disimpan sebagai teks UTF-8 yang dipotong. */
