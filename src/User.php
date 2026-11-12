@@ -35,6 +35,16 @@ final class User
         return function_exists('mb_strtoupper') ? mb_strtoupper($huruf, 'UTF-8') : strtoupper($huruf);
     }
 
+    /**
+     * Sidik jari kata sandi untuk session. Bila kata sandi diganti, sidik jari berubah, sehingga session
+     * lain milik user ini (di perangkat lain) tidak berlaku lagi. Yang disimpan di session hanya hash dari
+     * hash kata sandi, bukan hash itu sendiri.
+     */
+    public function sidikSandi(): string
+    {
+        return hash('sha256', 'dapur-user-sesi:' . $this->kataSandi);
+    }
+
     private static function hurufPertama(string $kata): string
     {
         return preg_match('/^\X/u', $kata, $cocok) === 1 ? $cocok[0] : '';
