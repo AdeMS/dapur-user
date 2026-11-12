@@ -1,12 +1,13 @@
 <?php
 /**
  * Menu user di navbar. Tidak menghasilkan keluaran di halaman: isinya dikirim ke placeholder 'menu-kanan'
- * pada layout Dapur (avatar inisial dengan submenu nama, email, dan tombol keluar).
+ * pada layout Dapur (avatar inisial dengan submenu berisi avatar, nama, email, Profil, dan tombol keluar).
  *
  * Panggil dari template modul: $this->partial('user::menu-user', [...]).
  *
  * @var AdeMS\Dapur\User\User $user
  * @var string $alamatKeluar
+ * @var string|null $alamatProfil  tautan Profil di submenu; tidak ditampilkan bila tidak diberikan
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
@@ -30,6 +31,10 @@
         text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
         box-shadow: inset -2px -3px 5px rgba(0, 0, 0, .35), inset 2px 2px 4px rgba(255, 255, 255, .15), 0 2px 4px rgba(0, 0, 0, .4);
     }
+    /* Avatar di kiri nama dan email pada submenu */
+    .user-avatar-menu { width: 2.75rem; height: 2.75rem; font-size: 1.05rem; }
+    /* Avatar sedikit lebih dekat ke tepi kiri; item submenu di bawahnya tetap memakai jarak bawaan */
+    .user-menu-kepala { padding-left: .75rem; }
 </style>
 <?php $this->placeholder('menu-kanan')->captureStart() ?>
                             <li class="nav-item dropdown">
@@ -37,11 +42,17 @@
                                     <span class="user-avatar" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    <li class="dropdown-item-text">
-                                        <div class="fw-semibold"><?= $this->escapeHtml($this->user->nama) ?></div>
-                                        <div class="small text-body-secondary"><?= $this->escapeHtml($this->user->email) ?></div>
+                                    <li class="dropdown-item-text d-flex align-items-center gap-2 user-menu-kepala">
+                                        <span class="user-avatar user-avatar-menu flex-shrink-0" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+                                        <div class="text-nowrap">
+                                            <div class="fw-semibold"><?= $this->escapeHtml($this->user->nama) ?></div>
+                                            <div class="small text-body-secondary"><?= $this->escapeHtml($this->user->email) ?></div>
+                                        </div>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
+<?php if ($this->alamatProfil ?? null) : ?>
+                                    <li><a class="dropdown-item" href="<?= $this->escapeHtmlAttr($this->alamatProfil) ?>"><i class="bi bi-person-circle me-2"></i>Profil</a></li>
+<?php endif ?>
                                     <li>
                                         <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatKeluar) ?>">
                                             <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
