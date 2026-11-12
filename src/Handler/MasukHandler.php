@@ -71,6 +71,7 @@ final class MasukHandler implements RequestHandlerInterface
         $csrf->baru();
         $sesi->simpan(WajibMasukMiddleware::SESI_USER, $hasil->user->id);
         $sesi->simpan(WajibMasukMiddleware::SESI_TERAKHIR, time());
+        $sesi->simpan(WajibMasukMiddleware::SESI_SANDI, $hasil->user->sidikSandi());
 
         return new RedirectResponse($this->pintu->tujuanSah($tujuan) ? $tujuan : $this->pintu->rute());
     }
