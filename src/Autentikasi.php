@@ -45,6 +45,8 @@ final class Autentikasi
 
         if (DaftarUser::perluHashBaru($user->kataSandi)) {
             $this->user->gantiSandi($user->id, $kataSandi);
+            // Ambil ulang agar sidik jari kata sandi di session cocok dengan hash yang baru.
+            $user = $this->user->cariId($user->id) ?? $user;
         }
 
         $this->pembatas->bersihkan($email, $ip);
