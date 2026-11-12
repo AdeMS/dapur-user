@@ -8,6 +8,8 @@ use AdeMS\Dapur\User\Sesi;
 use AdeMS\Dapur\User\NamaTabel;
 use AdeMS\Dapur\User\Skema;
 use Laminas\Db\Adapter\Adapter;
+use Mezzio\Template\TemplatePath;
+use Mezzio\Template\TemplateRendererInterface;
 
 /** Sesi di memori, untuk uji. */
 final class SesiLarik implements Sesi
@@ -54,5 +56,33 @@ final class DatabaseUji
         }
 
         return $db;
+    }
+}
+
+/** Renderer tiruan yang mengingat data template terakhir. */
+final class RendererUji implements TemplateRendererInterface
+{
+    /** @var array<string, mixed> */
+    public array $data = [];
+
+    public function render(string $name, $params = []): string
+    {
+        $this->data = (array) $params;
+
+        return $name;
+    }
+
+    public function addPath(string $path, ?string $namespace = null): void
+    {
+    }
+
+    /** @return TemplatePath[] */
+    public function getPaths(): array
+    {
+        return [];
+    }
+
+    public function addDefaultParam(string $templateName, string $param, mixed $value): void
+    {
     }
 }
