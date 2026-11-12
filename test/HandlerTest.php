@@ -17,39 +17,9 @@ use AdeMS\Dapur\User\TokenCsrf;
 use AdeMS\Dapur\User\User;
 use Laminas\Db\Adapter\Adapter;
 use Laminas\Diactoros\ServerRequest;
-use Mezzio\Template\TemplatePath;
-use Mezzio\Template\TemplateRendererInterface;
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/BantuanUji.php';
-
-/** Renderer tiruan yang mengingat data template terakhir. */
-final class RendererUji implements TemplateRendererInterface
-{
-    /** @var array<string, mixed> */
-    public array $data = [];
-
-    public function render(string $name, $params = []): string
-    {
-        $this->data = (array) $params;
-
-        return $name;
-    }
-
-    public function addPath(string $path, ?string $namespace = null): void
-    {
-    }
-
-    /** @return TemplatePath[] */
-    public function getPaths(): array
-    {
-        return [];
-    }
-
-    public function addDefaultParam(string $templateName, string $param, mixed $value): void
-    {
-    }
-}
 
 final class HandlerTest extends TestCase
 {
@@ -116,6 +86,10 @@ final class HandlerTest extends TestCase
         self::assertSame('/dashboard/laporan', $response->getHeaderLine('Location'));
         self::assertSame($this->id, $this->sesi->ambil(WajibMasukMiddleware::SESI_USER));
         self::assertSame('Browser Uji', $this->riwayat->untukUser($this->id)[0]['perangkat']);
+        self::assertSame(
+            (new DaftarUser($this->db))->cariId($this->id)?->sidikSandi(),
+            $this->sesi->ambil(WajibMasukMiddleware::SESI_SANDI),
+        );
     }
 
     public function testKeluarMencatatRiwayat(): void
