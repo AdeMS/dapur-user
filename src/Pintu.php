@@ -11,7 +11,7 @@ use RuntimeException;
  * alamat halaman masuk serta keluar di dalamnya.
  *
  * Modul yang memakai login, seperti dashboard, membuat pintunya sendiri lalu memberikannya ke
- * WajibMasukMiddleware, MasukHandler, dan KeluarHandler.
+ * WajibMasukMiddleware, MasukHandler, KeluarHandler, dan ProfilHandler.
  */
 final class Pintu
 {
@@ -53,6 +53,11 @@ final class Pintu
     public function alamatKeluar(): string
     {
         return $this->rute('/keluar');
+    }
+
+    public function alamatProfil(): string
+    {
+        return $this->rute('/profil');
     }
 
     /**
