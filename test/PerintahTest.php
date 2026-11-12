@@ -266,4 +266,85 @@ final class PerintahTest extends TestCase
     {
         self::assertSame(1, $this->jalankan($this->perintah(), ['tidak-ada']));
     }
+
+    public function testGantiSandiDicatatDiRiwayat(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $this->daftar->tambahAkses($id, 'dashboard');
+
+        self::assertSame(0, $this->jalankan($this->perintah(['sandi-baru-panjang-12', 'sandi-baru-panjang-12']), ['ganti-sandi', 'admin@contoh.com']));
+
+        $riwayat = (new RiwayatMasuk($this->db))->untukUser($id);
+        self::assertSame(RiwayatMasuk::GANTI_SANDI, $riwayat[0]['peristiwa']);
+        self::assertSame(Perintah::PERANGKAT_TERMINAL, $riwayat[0]['perangkat']);
+        self::assertStringContainsString('semua perangkat berakhir', $this->keluaran);
+    }
+
+    public function testDaftarAksesLingkup(): void
+    {
+        $a = $this->daftar->buat('admin@contoh.com', 'Admin Satu', self::SANDI);
+        $b = $this->daftar->buat('budi@contoh.com', 'Budi', self::SANDI);
+        $this->daftar->tambahAkses($a, 'dashboard');
+        $this->daftar->tambahAkses($b, 'toko.contoh.com');
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['daftar-akses']));
+        self::assertStringContainsString("User dengan akses ke 'dashboard'", $this->keluaran);
+        self::assertStringContainsString('admin@contoh.com', $this->keluaran);
+        self::assertStringContainsString('belum pernah login', $this->keluaran);
+        self::assertStringNotContainsString('budi@contoh.com', $this->keluaran);
+
+        self::assertSame(0, $this->jalankan($this->perintah(lingkup: 'kosong.contoh.com'), ['daftar-akses']));
+        self::assertStringContainsString("Belum ada user dengan akses ke 'kosong.contoh.com'", $this->keluaran);
+    }
+
+    public function testDaftarAksesSatuUser(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $this->daftar->tambahAkses($id, 'toko.contoh.com');
+        $this->daftar->tambahAkses($id, 'dashboard');
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['daftar-akses', 'admin@contoh.com']));
+        self::assertMatchesRegularExpression('/dashboard\s+admin\R.*toko\.contoh\.com\s+admin/s', $this->keluaran);
+
+        self::assertSame(1, $this->jalankan($this->perintah(), ['daftar-akses', 'tidak@contoh.com']));
+    }
+
+    public function testAdminTerakhirTidakBisaDicabut(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $this->daftar->tambahAkses($id, 'dashboard');
+
+        self::assertSame(1, $this->jalankan($this->perintah(), ['cabut-akses', 'admin@contoh.com']));
+        self::assertTrue($this->daftar->punyaAkses($id, 'dashboard'));
+    }
+
+    public function testCabutAksesHanyaDariLingkupIni(): void
+    {
+        $a = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $b = $this->daftar->buat('budi@contoh.com', 'Budi', self::SANDI);
+        $this->daftar->tambahAkses($a, 'dashboard');
+        $this->daftar->tambahAkses($b, 'dashboard');
+        $this->daftar->tambahAkses($b, 'toko.contoh.com');
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['cabut-akses', 'budi@contoh.com']));
+        self::assertFalse($this->daftar->punyaAkses($b, 'dashboard'));
+        self::assertTrue($this->daftar->punyaAkses($b, 'toko.contoh.com'));
+        self::assertNotNull($this->daftar->cariId($b), 'Akun tidak dihapus.');
+
+        self::assertSame(1, $this->jalankan($this->perintah(), ['cabut-akses', 'budi@contoh.com']), 'Sudah tidak punya akses.');
+    }
+
+    public function testCabutAksesDiTerminalBisaDibatalkan(): void
+    {
+        $a = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $b = $this->daftar->buat('budi@contoh.com', 'Budi', self::SANDI);
+        $this->daftar->tambahAkses($a, 'dashboard');
+        $this->daftar->tambahAkses($b, 'dashboard');
+
+        self::assertSame(0, $this->jalankan($this->perintah(tanya: ['']), ['cabut-akses', 'budi@contoh.com']));
+        self::assertTrue($this->daftar->punyaAkses($b, 'dashboard'));
+
+        self::assertSame(0, $this->jalankan($this->perintah(tanya: ['y']), ['cabut-akses', 'budi@contoh.com']));
+        self::assertFalse($this->daftar->punyaAkses($b, 'dashboard'));
+    }
 }
