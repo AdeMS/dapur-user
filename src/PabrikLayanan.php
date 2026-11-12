@@ -6,6 +6,7 @@ namespace AdeMS\Dapur\User;
 
 use AdeMS\Dapur\User\Handler\KeluarHandler;
 use AdeMS\Dapur\User\Handler\MasukHandler;
+use AdeMS\Dapur\User\Handler\ProfilHandler;
 use AdeMS\Dapur\User\Middleware\MulaiSesiMiddleware;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use Laminas\Db\Adapter\Adapter;
@@ -54,6 +55,27 @@ final class PabrikLayanan
     public static function keluar(ContainerInterface $c, Pintu $pintu): KeluarHandler
     {
         return new KeluarHandler($pintu, $c->get(RiwayatMasuk::class));
+    }
+
+    /**
+     * Halaman profil. Berikan penyaji milik modul agar halaman memakai menu modul tersebut; tanpa penyaji,
+     * halaman memakai layout pintu dengan menu user saja.
+     */
+    public static function profil(
+        ContainerInterface $c,
+        Pintu $pintu,
+        ?PenyajiHalaman $penyaji = null,
+        string $template = ProfilHandler::TEMPLATE,
+    ): ProfilHandler {
+        return new ProfilHandler(
+            $c->get(DaftarUser::class),
+            $c->get(PembatasPercobaan::class),
+            $c->get(RiwayatMasuk::class),
+            $penyaji ?? new PenyajiDasar($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+            $c->get(Pengaturan::class)->zonaWaktu,
+            $template,
+        );
     }
 
     /** @return array<string, mixed> */
