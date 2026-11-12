@@ -168,4 +168,28 @@ final class WajibMasukTest extends TestCase
     {
         self::assertSame($harapan, (new Pintu('dashboard', $dasar))->tujuanSah($tujuan));
     }
+
+    public function testSesiLamaTanpaSidikSandiTetapBerlakuDanDilengkapi(): void
+    {
+        $this->login();
+
+        self::assertSame(200, $this->proses()->getStatusCode());
+        self::assertSame(
+            $this->daftar->cariId($this->id)?->sidikSandi(),
+            $this->sesi->ambil(WajibMasukMiddleware::SESI_SANDI),
+        );
+    }
+
+    public function testKataSandiDigantiSesiLainDikeluarkan(): void
+    {
+        $this->login();
+        self::assertSame(200, $this->proses()->getStatusCode());
+
+        $this->daftar->gantiSandi($this->id, 'kata-sandi-baru-yang-panjang');
+        $response = $this->proses();
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertNull($this->sesi->ambil(WajibMasukMiddleware::SESI_USER));
+        self::assertNull($this->sesi->ambil(WajibMasukMiddleware::SESI_SANDI));
+    }
 }
