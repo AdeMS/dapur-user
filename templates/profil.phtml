@@ -1,0 +1,31 @@
+<?php
+/**
+ * Halaman profil bawaan: menu user di navbar, lalu isi profil.
+ *
+ * Modul yang punya menu sendiri (misalnya dashboard) memakai templatenya sendiri, lalu memanggil
+ * $this->partial('user::profil-isi', [...]) dengan data yang sama.
+ *
+ * @var AdeMS\Dapur\User\User $user
+ */
+$this->headTitle('Profil');
+?>
+<?= $this->partial('user::menu-user', [
+    'user'         => $this->user,
+    'alamatKeluar' => $this->alamatKeluar,
+    'alamatProfil' => $this->alamatProfil,
+    'tokenCsrf'    => $this->tokenCsrf,
+    'fieldCsrf'    => $this->fieldCsrf,
+]) ?>
+<?= $this->partial('user::profil-isi', [
+    'user'         => $this->user,
+    'pesan'        => $this->pesan,
+    'galat'        => $this->galat,
+    'galatBagian'  => $this->galatBagian,
+    'nama'         => $this->nama,
+    'alamatProfil' => $this->alamatProfil,
+    'minimalSandi' => $this->minimalSandi,
+    'zonaWaktu'    => $this->zonaWaktu,
+    'riwayat'      => $this->riwayat,
+    'tokenCsrf'    => $this->tokenCsrf,
+    'fieldCsrf'    => $this->fieldCsrf,
+]) ?>
