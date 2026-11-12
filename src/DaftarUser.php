@@ -50,6 +50,11 @@ final class DaftarUser
         $this->jalankan("UPDATE {$this->tUser} SET kata_sandi = ? WHERE id = ?", [self::hash($kataSandi), $id]);
     }
 
+    public function gantiNama(int $id, string $nama): void
+    {
+        $this->jalankan("UPDATE {$this->tUser} SET nama = ? WHERE id = ?", [$nama, $id]);
+    }
+
     public function catatMasuk(int $id): void
     {
         $this->jalankan("UPDATE {$this->tUser} SET terakhir_masuk = ? WHERE id = ?", [gmdate('Y-m-d H:i:s'), $id]);
@@ -77,6 +82,70 @@ final class DaftarUser
         }
     }
 
+    /** Mencabut akses user dari satu lingkup. Akun user sendiri tidak dihapus. */
+    public function cabutAkses(int $id, string $lingkup): void
+    {
+        $this->jalankan("DELETE FROM {$this->tAkses} WHERE user_id = ? AND lingkup = ?", [$id, $lingkup]);
+    }
+
+    /** Peran user di satu lingkup, atau null bila tidak punya akses. */
+    public function peran(int $id, string $lingkup): ?string
+    {
+        $baris = $this->baris("SELECT peran FROM {$this->tAkses} WHERE user_id = ? AND lingkup = ?", [$id, $lingkup]);
+
+        return $baris === [] ? null : (string) $baris[0]['peran'];
+    }
+
+    /** Jumlah admin di satu lingkup; dipakai agar admin terakhir tidak tercabut. */
+    public function jumlahAdmin(string $lingkup): int
+    {
+        $baris = $this->baris(
+            "SELECT COUNT(*) AS jumlah FROM {$this->tAkses} WHERE lingkup = ? AND peran = ?",
+            [$lingkup, self::PERAN_ADMIN],
+        );
+
+        return (int) ($baris[0]['jumlah'] ?? 0);
+    }
+
+    /**
+     * Semua lingkup yang bisa dimasuki satu user, urut nama lingkup.
+     *
+     * @return list<array{lingkup: string, peran: string}>
+     */
+    public function aksesUser(int $id): array
+    {
+        $hasil = [];
+        foreach ($this->baris("SELECT lingkup, peran FROM {$this->tAkses} WHERE user_id = ? ORDER BY lingkup", [$id]) as $b) {
+            $hasil[] = ['lingkup' => (string) $b['lingkup'], 'peran' => (string) $b['peran']];
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Semua user yang punya akses ke satu lingkup, urut email. Waktu terakhir_masuk dalam UTC.
+     *
+     * @return list<array{id: int, email: string, nama: string, aktif: bool, peran: string, terakhir_masuk: ?string}>
+     */
+    public function userDiLingkup(string $lingkup): array
+    {
+        $hasil = [];
+        $sql   = "SELECT u.id, u.email, u.nama, u.aktif, u.terakhir_masuk, a.peran FROM {$this->tUser} u"
+            . " JOIN {$this->tAkses} a ON a.user_id = u.id WHERE a.lingkup = ? ORDER BY u.email";
+        foreach ($this->baris($sql, [$lingkup]) as $b) {
+            $hasil[] = [
+                'id'             => (int) $b['id'],
+                'email'          => (string) $b['email'],
+                'nama'           => (string) $b['nama'],
+                'aktif'          => (int) $b['aktif'] === 1,
+                'peran'          => (string) $b['peran'],
+                'terakhir_masuk' => $b['terakhir_masuk'] === null ? null : (string) $b['terakhir_masuk'],
+            ];
+        }
+
+        return $hasil;
+    }
+
     public static function normalkanEmail(string $email): string
     {
         return strtolower(trim($email));
@@ -95,8 +164,7 @@ final class DaftarUser
     /** @param list<mixed> $parameter */
     private function user(string $sql, array $parameter): ?User
     {
-        $hasil = $this->jalankan($sql, $parameter);
-        $baris = $hasil instanceof ResultSetInterface ? $hasil->toArray() : [];
+        $baris = $this->baris($sql, $parameter);
         if ($baris === []) {
             return null;
         }
@@ -108,6 +176,17 @@ final class DaftarUser
             (string) $baris[0]['kata_sandi'],
             (int) $baris[0]['aktif'] === 1,
         );
+    }
+
+    /**
+     * @param list<mixed> $parameter
+     * @return list<array<string, mixed>>
+     */
+    private function baris(string $sql, array $parameter): array
+    {
+        $hasil = $this->jalankan($sql, $parameter);
+
+        return $hasil instanceof ResultSetInterface ? array_values($hasil->toArray()) : [];
     }
 
     /** @param list<mixed> $parameter */
