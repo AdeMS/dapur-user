@@ -8,6 +8,8 @@
  *   vendor/bin/dapur-user buat-admin <email> [--nama="Nama Lengkap"]
  *   vendor/bin/dapur-user ganti-sandi <email>
  *   vendor/bin/dapur-user riwayat <email> [--jumlah=20]
+ *   vendor/bin/dapur-user daftar-akses [<email>]
+ *   vendor/bin/dapur-user cabut-akses <email>
  */
 
 declare(strict_types=1);
