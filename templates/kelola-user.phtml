@@ -1,0 +1,38 @@
+<?php
+/**
+ * Halaman kelola user bawaan: menu user di navbar, lalu isi dari user::kelola-user-isi.
+ *
+ * Modul yang punya menu sendiri (misalnya dashboard) memakai templatenya sendiri, lalu memanggil
+ * $this->partial('user::kelola-user-isi', [...]) dengan data yang sama.
+ *
+ * @var AdeMS\Dapur\User\User $user
+ */
+$this->headTitle('User');
+?>
+<?= $this->partial('user::menu-user', [
+    'user'         => $this->user,
+    'alamatKeluar' => $this->alamatKeluar,
+    'alamatProfil' => $this->alamatProfil,
+    'tokenCsrf'    => $this->tokenCsrf,
+    'fieldCsrf'    => $this->fieldCsrf,
+]) ?>
+<?= $this->partial('user::kelola-user-isi', [
+    'user'          => $this->user,
+    'ditolak'       => $this->ditolak,
+    'belumSiap'     => $this->belumSiap,
+    'pesan'         => $this->pesan,
+    'galat'         => $this->galat,
+    'sandiBaru'     => $this->sandiBaru,
+    'daftarUser'    => $this->daftarUser,
+    'aktivitas'     => $this->aktivitas,
+    'peranTersedia' => $this->peranTersedia,
+    'kelolaAkun'    => $this->kelolaAkun,
+    'lingkup'       => $this->lingkup,
+    'alamatKelola'  => $this->alamatKelola,
+    'zonaWaktu'     => $this->zonaWaktu,
+    'formEmail'     => $this->formEmail,
+    'formNama'      => $this->formNama,
+    'formPeran'     => $this->formPeran,
+    'tokenCsrf'     => $this->tokenCsrf,
+    'fieldCsrf'     => $this->fieldCsrf,
+]) ?>
