@@ -8,7 +8,7 @@ use Closure;
 use Laminas\Db\Adapter\Adapter;
 use Laminas\Db\Metadata\Source\Factory;
 
-/** Perintah baris: pasang, buat-admin, ganti-sandi, riwayat, daftar-akses, cabut-akses. */
+/** Perintah baris: pasang, buat-admin, ganti-sandi, riwayat, daftar-akses, cabut-akses, riwayat-akun. */
 final class Perintah
 {
     /** Isi kolom perangkat di riwayat untuk kata sandi yang diganti lewat perintah ini. */
@@ -28,6 +28,7 @@ final class Perintah
         private readonly NamaTabel $tabel = new NamaTabel(),
         private readonly ?RiwayatMasuk $riwayat = null,
         private readonly ?\DateTimeZone $zonaWaktu = null,
+        private readonly ?RiwayatAkun $riwayatAkun = null,
     ) {
     }
 
@@ -45,6 +46,7 @@ final class Perintah
             'riwayat'      => $this->tampilkanRiwayat($utama[1] ?? '', $this->opsi($argumen, 'jumlah')),
             'daftar-akses' => $this->daftarAkses($utama[1] ?? null),
             'cabut-akses'  => $this->cabutAkses($utama[1] ?? ''),
+            'riwayat-akun' => $this->tampilkanRiwayatAkun($utama[1] ?? null, $this->opsi($argumen, 'jumlah')),
             default        => $this->bantuan(($utama[0] ?? '') === '' ? 0 : 1),
         };
     }
@@ -87,6 +89,8 @@ final class Perintah
 
         $id = $this->user->buat($email, $nama ?? $email, $sandi);
         $this->user->tambahAkses($id, $this->lingkup);
+        $this->catatAkun(RiwayatAkun::BUAT_USER, $id, $nama ?? $email);
+        $this->catatAkun(RiwayatAkun::BERI_AKSES, $id, 'peran ' . DaftarUser::PERAN_ADMIN);
         printf("Admin %s dibuat untuk lingkup '%s'.%s", DaftarUser::normalkanEmail($email), $this->lingkup, PHP_EOL);
 
         return 0;
@@ -99,6 +103,7 @@ final class Perintah
             printf("User %s sudah ada dan sudah memiliki akses ke '%s'.%s", $user->email, $this->lingkup, PHP_EOL);
         } else {
             $this->user->tambahAkses($user->id, $this->lingkup);
+            $this->catatAkun(RiwayatAkun::BERI_AKSES, $user->id, 'peran ' . DaftarUser::PERAN_ADMIN);
             printf("User %s sudah ada; akses admin ke '%s' ditambahkan.%s", $user->email, $this->lingkup, PHP_EOL);
         }
 
@@ -231,7 +236,59 @@ final class Perintah
         }
 
         $this->user->cabutAkses($user->id, $this->lingkup);
+        $this->catatAkun(RiwayatAkun::CABUT_AKSES, $user->id, "peran {$peran}");
         printf("Akses %s ke '%s' dicabut. Akun user tidak dihapus.%s", $user->email, $this->lingkup, PHP_EOL);
+
+        return 0;
+    }
+
+    /** Perubahan akun lewat terminal dicatat tanpa pelaku. */
+    private function catatAkun(string $peristiwa, int $sasaranId, string $keterangan = ''): void
+    {
+        $this->riwayatAkun?->catat($peristiwa, null, $sasaranId, $this->lingkup, $keterangan, '', self::PERANGKAT_TERMINAL);
+    }
+
+    /** Tanpa email: perubahan akun di lingkup ini. Dengan email: perubahan pada akun user itu di semua lingkup. */
+    private function tampilkanRiwayatAkun(?string $email, ?string $jumlah): int
+    {
+        if ($this->riwayatAkun === null) {
+            return $this->gagal('Riwayat akun tidak tersedia.');
+        }
+
+        $batas = $jumlah !== null && ctype_digit($jumlah) ? (int) $jumlah : 20;
+        if ($email !== null) {
+            $user = $this->user->cariEmail($email);
+            if ($user === null) {
+                return $this->gagal('User tidak ditemukan. Pemakaian: dapur-user riwayat-akun [<email>] [--jumlah=20]');
+            }
+
+            $baris = $this->riwayatAkun->untukUser($user->id, $batas);
+            $judul = "Riwayat akun {$user->email}";
+        } else {
+            $baris = $this->riwayatAkun->untukLingkup($this->lingkup, $batas);
+            $judul = "Riwayat akun di '{$this->lingkup}'";
+        }
+
+        if ($baris === []) {
+            echo 'Belum ada riwayat akun.' . PHP_EOL;
+
+            return 0;
+        }
+
+        $zona = $this->zona();
+        printf('%s (waktu %s):%s', $judul, $zona->getName(), PHP_EOL);
+        foreach ($baris as $b) {
+            printf(
+                '%s  %-11s  %-28s  oleh %-28s  %-20s  %s%s',
+                $this->waktu($b['waktu'], $zona),
+                $b['peristiwa'],
+                $b['sasaran'],
+                $b['pelaku'] ?? '(terminal)',
+                $b['lingkup'],
+                $b['keterangan'],
+                PHP_EOL,
+            );
+        }
 
         return 0;
     }
@@ -328,6 +385,7 @@ final class Perintah
               riwayat <email> [--jumlah=20]   Menampilkan riwayat login user
               daftar-akses [<email>]          Menampilkan user di lingkup ini, atau semua akses satu user
               cabut-akses <email>             Mencabut akses user dari lingkup ini (akun tidak dihapus)
+              riwayat-akun [<email>]          Menampilkan perubahan akun di lingkup ini, atau pada satu user
 
             Dengan paket adems/dapur-multiwebsite, tambahkan --website=<domain> untuk website tertentu.
 
