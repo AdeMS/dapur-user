@@ -10,6 +10,7 @@
  *   vendor/bin/dapur-user riwayat <email> [--jumlah=20]
  *   vendor/bin/dapur-user daftar-akses [<email>]
  *   vendor/bin/dapur-user cabut-akses <email>
+ *   vendor/bin/dapur-user riwayat-akun [<email>] [--jumlah=20]
  */
 
 declare(strict_types=1);
@@ -18,6 +19,7 @@ use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\Konteks;
 use AdeMS\Dapur\User\Pengaturan;
 use AdeMS\Dapur\User\Perintah;
+use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use Laminas\Db\Adapter\Adapter;
 
@@ -59,7 +61,7 @@ try {
     $db        = $container->get(Adapter::class);
     $atur      = new Pengaturan($container->get('config')['user'] ?? []);
     $riwayat   = new RiwayatMasuk($db, $atur->tabel, $atur->riwayatHari);
-    $perintah  = new Perintah($db, new DaftarUser($db, $atur->tabel), $bacaSandi(...), Konteks::lingkup(), $tanya, $atur->tabel, $riwayat, $atur->zonaWaktu);
+    $perintah  = new Perintah($db, new DaftarUser($db, $atur->tabel), $bacaSandi(...), Konteks::lingkup(), $tanya, $atur->tabel, $riwayat, $atur->zonaWaktu, new RiwayatAkun($db, $atur->tabel));
 
     exit($perintah->jalankan($argumen));
 } catch (Throwable $e) {
