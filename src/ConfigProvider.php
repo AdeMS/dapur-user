@@ -32,6 +32,7 @@ final class ConfigProvider
                     DaftarUser::class,
                     PembatasPercobaan::class,
                     RiwayatMasuk::class,
+                    RiwayatAkun::class,
                     Autentikasi::class,
                     Middleware\MulaiSesiMiddleware::class,
                 ], PabrikLayanan::class),
