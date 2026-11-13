@@ -10,6 +10,7 @@ use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PembatasPercobaan;
 use AdeMS\Dapur\User\PenyajiDasar;
 use AdeMS\Dapur\User\Pintu;
+use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use AdeMS\Dapur\User\Sesi;
 use AdeMS\Dapur\User\TokenCsrf;
@@ -56,6 +57,8 @@ final class ProfilHandlerTest extends TestCase
             new PenyajiDasar($this->renderer, $this->pintu),
             $this->pintu,
             new DateTimeZone('Asia/Jakarta'),
+            ProfilHandler::TEMPLATE,
+            new RiwayatAkun($this->db),
         );
     }
 
@@ -124,6 +127,11 @@ final class ProfilHandlerTest extends TestCase
 
         self::assertSame('/dashboard/profil', $response->getHeaderLine('Location'));
         self::assertSame('Ade M Saragih', $this->user()->nama);
+
+        $akun = (new RiwayatAkun($this->db))->untukUser($this->id);
+        self::assertSame(RiwayatAkun::UBAH_NAMA, $akun[0]['peristiwa']);
+        self::assertSame('Admin → Ade M Saragih', $akun[0]['keterangan']);
+        self::assertSame('admin@contoh.com', $akun[0]['pelaku']);
 
         $this->get();
         self::assertSame('Nama sudah disimpan.', $this->renderer->data['pesan']);
@@ -220,5 +228,23 @@ final class ProfilHandlerTest extends TestCase
     {
         self::assertSame(422, $this->gantiSandi(ulang: 'lain-sama-sekali-panjang')->getStatusCode());
         self::assertTrue(password_verify(self::SANDI, $this->user()->kataSandi));
+    }
+
+    public function testNamaSamaTidakDicatat(): void
+    {
+        $this->post(['aksi' => 'nama', 'nama' => 'Admin']);
+
+        self::assertSame([], (new RiwayatAkun($this->db))->untukUser($this->id));
+    }
+
+    public function testUbahNamaSebelumPasangMemberiPesanJelas(): void
+    {
+        $this->db->query('DROP TABLE "user_riwayat_akun"', \Laminas\Db\Adapter\Adapter::QUERY_MODE_EXECUTE);
+
+        $response = $this->post(['aksi' => 'nama', 'nama' => 'Nama Baru']);
+
+        self::assertSame(503, $response->getStatusCode());
+        self::assertSame(RiwayatAkun::PESAN_BELUM_DIPASANG, $this->renderer->data['galat']);
+        self::assertSame('Admin', $this->user()->nama);
     }
 }
