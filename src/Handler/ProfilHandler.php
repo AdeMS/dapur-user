@@ -11,6 +11,7 @@ use AdeMS\Dapur\User\PembatasPercobaan;
 use AdeMS\Dapur\User\PenyajiHalaman;
 use AdeMS\Dapur\User\Perangkat;
 use AdeMS\Dapur\User\Pintu;
+use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use AdeMS\Dapur\User\Sesi;
 use AdeMS\Dapur\User\TokenCsrf;
@@ -49,6 +50,7 @@ final class ProfilHandler implements RequestHandlerInterface
         private readonly Pintu $pintu,
         private readonly DateTimeZone $zonaWaktu,
         private readonly string $template = self::TEMPLATE,
+        private readonly ?RiwayatAkun $riwayatAkun = null,
     ) {
     }
 
@@ -93,7 +95,23 @@ final class ProfilHandler implements RequestHandlerInterface
             );
         }
 
-        $this->daftar->gantiNama($user->id, $nama);
+        if ($this->riwayatAkun !== null && ! $this->riwayatAkun->tersedia()) {
+            return $this->galat($request, $user, 'nama', RiwayatAkun::PESAN_BELUM_DIPASANG, 503, ['nama' => $nama]);
+        }
+
+        if ($nama !== $user->nama) {
+            $this->daftar->gantiNama($user->id, $nama);
+            $this->riwayatAkun?->catat(
+                RiwayatAkun::UBAH_NAMA,
+                $user->id,
+                $user->id,
+                $this->pintu->lingkup,
+                $user->nama . ' → ' . $nama,
+                (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
+                $request->getHeaderLine('User-Agent'),
+            );
+        }
+
         $sesi->simpan(self::SESI_PESAN, 'Nama sudah disimpan.');
 
         return new RedirectResponse($this->pintu->alamatProfil());
