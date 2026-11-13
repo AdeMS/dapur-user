@@ -28,7 +28,7 @@ final class WajibMasukMiddleware implements MiddlewareInterface
     /** Sidik jari kata sandi saat login (User::sidikSandi()). */
     public const SESI_SANDI = 'user.sandi';
 
-    /** Nama atribut request berisi peran user di lingkup pintu ini, misalnya 'admin' atau 'anggota'. */
+    /** Nama atribut request berisi peran user di lingkup pintu ini: 'admin_super', 'admin_web', atau 'anggota'. */
     public const ATRIBUT_PERAN = 'user.peran';
 
     public function __construct(
