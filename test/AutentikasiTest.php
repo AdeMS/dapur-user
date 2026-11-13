@@ -72,7 +72,14 @@ final class AutentikasiTest extends TestCase
 
     public function testTanpaAksesKeLingkupGagal(): void
     {
+        $this->daftar->ubahPeran($this->id, 'dashboard', DaftarUser::PERAN_ANGGOTA);
+
         self::assertSame(HasilMasuk::GAGAL, $this->masuk(lingkup: 'blog.contoh.com')->status);
+    }
+
+    public function testAdminSuperBisaMasukKeSemuaWebsite(): void
+    {
+        self::assertSame(HasilMasuk::BERHASIL, $this->masuk(lingkup: 'blog.contoh.com')->status);
     }
 
     public function testTerkunciSetelahBatasWalaupunSandiBenar(): void
