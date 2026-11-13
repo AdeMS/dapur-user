@@ -78,7 +78,7 @@ final class PerintahTest extends TestCase
         self::assertMatchesRegularExpression('/Tabel user_percobaan_masuk\s+dibuat/', $this->keluaran);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertSame(5, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
+        self::assertSame(6, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
         self::assertSame(0, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
     }
 
@@ -185,7 +185,7 @@ final class PerintahTest extends TestCase
         $this->daftar->tambahAkses($id, 'dashboard');
 
         self::assertSame(0, $this->jalankan($this->perintah(), ['buat-admin', 'admin@contoh.com']));
-        self::assertStringContainsString("sudah memiliki akses ke 'dashboard'", $this->keluaran);
+        self::assertStringContainsString("sudah menjadi admin super di 'dashboard'", $this->keluaran);
         self::assertStringContainsString('ganti-sandi', $this->keluaran);
     }
 
@@ -210,7 +210,8 @@ final class PerintahTest extends TestCase
 
         self::assertSame(0, $kode);
         self::assertTrue(password_verify(self::SANDI, (string) $this->daftar->cariId($id)?->kataSandi));
-        self::assertStringContainsString("akses admin ke 'blog.contoh.com' ditambahkan", $this->keluaran);
+        self::assertStringContainsString("akses admin web ke 'blog.contoh.com' ditambahkan", $this->keluaran);
+        self::assertSame('admin_web', $this->daftar->peran($id, 'blog.contoh.com'));
         self::assertStringContainsString('Kata sandi tidak diubah.', $this->keluaran);
     }
 
@@ -308,6 +309,11 @@ final class PerintahTest extends TestCase
         self::assertStringContainsString('belum pernah login', $this->keluaran);
         self::assertStringNotContainsString('budi@contoh.com', $this->keluaran);
 
+        // Admin super ikut terdaftar di setiap website sebagai admin otomatis.
+        self::assertSame(0, $this->jalankan($this->perintah(lingkup: 'kosong.contoh.com'), ['daftar-akses']));
+        self::assertMatchesRegularExpression('/admin@contoh\.com\s+Admin super \(otomatis\)/', $this->keluaran);
+
+        $this->db->query('DELETE FROM "user_akses"', Adapter::QUERY_MODE_EXECUTE);
         self::assertSame(0, $this->jalankan($this->perintah(lingkup: 'kosong.contoh.com'), ['daftar-akses']));
         self::assertStringContainsString("Belum ada user dengan akses ke 'kosong.contoh.com'", $this->keluaran);
     }
@@ -319,7 +325,8 @@ final class PerintahTest extends TestCase
         $this->daftar->tambahAkses($id, 'dashboard');
 
         self::assertSame(0, $this->jalankan($this->perintah(), ['daftar-akses', 'admin@contoh.com']));
-        self::assertMatchesRegularExpression('/dashboard\s+admin\R.*toko\.contoh\.com\s+admin/s', $this->keluaran);
+        self::assertMatchesRegularExpression('/dashboard\s+Admin super\R.*toko\.contoh\.com\s+Admin web/s', $this->keluaran);
+        self::assertStringContainsString('juga admin di semua website', $this->keluaran);
 
         self::assertSame(1, $this->jalankan($this->perintah(), ['daftar-akses', 'tidak@contoh.com']));
     }
@@ -377,7 +384,7 @@ final class PerintahTest extends TestCase
             array_column($riwayat, 'peristiwa'),
         );
         self::assertNull($riwayat[0]['pelaku'], 'Lewat terminal tanpa pelaku.');
-        self::assertSame('peran admin', $riwayat[0]['keterangan']);
+        self::assertSame('peran admin_super', $riwayat[0]['keterangan']);
     }
 
     public function testRiwayatAkun(): void
