@@ -192,4 +192,12 @@ final class WajibMasukTest extends TestCase
         self::assertNull($this->sesi->ambil(WajibMasukMiddleware::SESI_USER));
         self::assertNull($this->sesi->ambil(WajibMasukMiddleware::SESI_SANDI));
     }
+
+    public function testPeranDiteruskanSebagaiAtribut(): void
+    {
+        $this->login();
+        $this->proses();
+
+        self::assertSame('admin', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
+    }
 }
