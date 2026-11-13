@@ -96,6 +96,14 @@ final class Skema
                 CONSTRAINT {$q("fk_{$a}user_riwayat_akun_sasaran")} FOREIGN KEY (sasaran_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
             ) {$opsi}",
+            $t->pengaturan() => "CREATE TABLE IF NOT EXISTS {$q($t->pengaturan())} (
+                user_id BIGINT UNSIGNED NOT NULL,
+                kunci VARCHAR(190) NOT NULL,
+                nilai VARCHAR(255) NOT NULL DEFAULT '',
+                PRIMARY KEY (user_id, kunci),
+                CONSTRAINT {$q("fk_{$a}user_pengaturan_user")} FOREIGN KEY (user_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
+            ) {$opsi}",
         ];
     }
 
@@ -145,6 +153,12 @@ final class Skema
                 ip TEXT NOT NULL DEFAULT '',
                 perangkat TEXT NOT NULL DEFAULT '',
                 waktu TEXT NOT NULL
+            )",
+            $t->pengaturan() => "CREATE TABLE IF NOT EXISTS {$q($t->pengaturan())} (
+                user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
+                kunci TEXT NOT NULL,
+                nilai TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (user_id, kunci)
             )",
         ];
     }
