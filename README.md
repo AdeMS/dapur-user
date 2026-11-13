@@ -23,19 +23,46 @@ Paket ini biasanya ikut terpasang sebagai kebutuhan modul lain. Untuk memasangny
 ```json
 {
     "require": {
-        "adems/dapur-user": "^1.2"
+        "adems/dapur-user": "^2.0"
     }
 }
 ```
 
 Bila tabel perlu awalan nama (misalnya karena database dipakai bersama aplikasi lain), atur `awalan_tabel` lebih
-dulu (lihat [Pengaturan](#pengaturan)). Lalu buat tabel dan admin pertama dari folder inti. Kata sandi diketik
-tanpa terlihat; minimal 12 karakter untuk admin dan 8 karakter untuk user lain:
+dulu (lihat [Pengaturan](#pengaturan)). Lalu buat tabel dan admin pertama dari folder inti. Admin yang dibuat di
+inti menjadi **admin super**. Kata sandi diketik tanpa terlihat; minimal 12 karakter untuk admin dan 8 karakter
+untuk anggota:
 
 ```bash
 vendor/bin/dapur-user pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
+
+### Memperbarui dari 1.x ke 2.0
+
+Versi 2.0 mengganti peran `admin` dengan **admin super** dan **admin web** (lihat [Peran](#peran)), dan menambah
+tabel `user_pengaturan`. Jalankan dari folder inti:
+
+```bash
+composer update
+vendor/bin/dapur-user pasang
+```
+
+lalu hapus cache konfigurasi. `pasang` membuat tabel yang belum ada dan mengubah peran lama: `admin` di dashboard
+utama menjadi `admin_super`, `admin` di website menjadi `admin_web`. Sebelum `pasang` dijalankan, peran lama sudah
+dibaca dengan arti yang sama, jadi login tetap berjalan. User tidak perlu login ulang.
+
+Perubahan untuk kode yang memakai paket ini:
+
+- Konstanta `DaftarUser::PERAN_ADMIN` dan `DaftarUser::PERAN` diganti `PERAN_ADMIN_SUPER`, `PERAN_ADMIN_WEB`,
+  `PERAN_UTAMA`, dan `PERAN_WEBSITE`. Untuk memeriksa "admin mana pun", pakai `DaftarUser::peranAdmin($peran)`.
+- `DaftarUser::jumlahAdmin()` diganti `jumlahAdminSuper()`.
+- Atribut request `user.peran` berisi `admin_super`, `admin_web`, atau `anggota`. Admin super mendapat
+  `admin_super` di website mana pun.
+- Template `user::kelola-user-isi` menerima `peranTersedia` sebagai `nilai => label`, dan setiap baris user
+  memiliki `labelPeran` serta `otomatis`.
+
+Dari 1.0, lakukan juga langkah di bawah.
 
 ### Memperbarui dari 1.1
 
@@ -86,8 +113,8 @@ membaca pengaturan yang sama, jadi atur awalan sebelum menjalankan `pasang`.
 ## Perintah
 
 ```bash
-vendor/bin/dapur-user pasang                          # membuat tabel yang belum ada, aman diulang
-vendor/bin/dapur-user buat-admin <email>              # membuat admin, atau menambah akses user yang sudah ada
+vendor/bin/dapur-user pasang                          # membuat tabel yang belum ada dan memperbarui peran lama, aman diulang
+vendor/bin/dapur-user buat-admin <email>              # membuat admin super (inti) atau admin web (--website)
 vendor/bin/dapur-user ganti-sandi <email>             # mengganti kata sandi
 vendor/bin/dapur-user riwayat <email> [--jumlah=20]   # menampilkan riwayat login user
 vendor/bin/dapur-user daftar-akses [<email>]          # user di lingkup ini, atau semua akses satu user
@@ -96,19 +123,20 @@ vendor/bin/dapur-user riwayat-akun [<email>]          # perubahan akun di lingku
 ```
 
 Dengan paket multi-website, tambahkan `--website=<domain>` untuk website tertentu. Lingkup akses yang diberikan
-`buat-admin` adalah `dashboard` di inti, atau nama domain website.
+`buat-admin` adalah `dashboard` di inti (peran admin super), atau nama domain website (peran admin web).
 
 `pasang` melaporkan setiap tabel: `dibuat` atau `sudah ada`. Tabel yang sudah ada beserta isinya tidak diubah;
 perintah ini tidak pernah menghapus tabel.
 
 `cabut-akses` hanya mencabut akses ke lingkup yang dituju; akun user dan aksesnya ke lingkup lain tetap ada.
-Admin terakhir sebuah lingkup tidak bisa dicabut, agar lingkup itu tidak terkunci. Bila dijalankan di terminal,
+Admin super terakhir tidak bisa dicabut, agar Dapur tidak terkunci. Akses otomatis admin super ke website hanya
+bisa dicabut dari inti. Bila dijalankan di terminal,
 perintah ini meminta konfirmasi lebih dulu.
 
 Kata sandi yang diganti lewat `ganti-sandi` atau `buat-admin` dicatat di riwayat, dan session user tersebut di
 semua perangkat berakhir.
 
-Bila email pada `buat-admin` sudah terdaftar, perintah memastikan user itu punya akses ke lingkup yang dituju,
+Bila email pada `buat-admin` sudah terdaftar, perintah memastikan user itu menjadi admin di lingkup yang dituju,
 lalu menawarkan ganti kata sandi dengan jawaban bawaan "tidak". Tawaran ini hanya muncul bila perintah dijalankan
 di terminal; dari skrip, kata sandi tidak diubah.
 
@@ -127,14 +155,20 @@ di dashboard website. Tautannya ada di submenu avatar. Di halaman ini user bisa:
 
 Setiap akses ke sebuah lingkup punya peran:
 
-| Peran | Bisa |
-|---|---|
-| `admin` | Login, memakai halaman di lingkup itu, dan mengelola user di sana. Kata sandi minimal 12 karakter. |
-| `anggota` | Login dan memakai halaman di lingkup itu, tanpa mengelola user. Kata sandi minimal 8 karakter. |
+| Peran | Nilai | Bisa |
+|---|---|---|
+| Admin super | `admin_super` | Admin di dashboard utama, dan otomatis admin di **semua** website tanpa perlu diberi akses satu per satu. Hanya ada di lingkup `dashboard`. |
+| Admin web | `admin_web` | Login, memakai halaman, dan mengelola user di website yang aksesnya diberikan. Hanya ada di lingkup website. |
+| Anggota | `anggota` | Login dan memakai halaman di lingkup itu, tanpa mengelola user. |
 
-Peran berlaku per lingkup: satu user bisa menjadi admin di satu website dan anggota di website lain. Peran user
-yang sedang login tersedia sebagai atribut request `WajibMasukMiddleware::ATRIBUT_PERAN`. Admin pertama dibuat
-lewat perintah `buat-admin`; user berikutnya bisa ditambahkan dari halaman kelola user.
+Kata sandi admin super dan admin web minimal 12 karakter; anggota minimal 8 karakter.
+
+Peran berlaku per lingkup: satu user bisa menjadi admin web di satu website dan anggota di website lain. Peran
+user yang sedang login tersedia sebagai atribut request `WajibMasukMiddleware::ATRIBUT_PERAN`. Admin super pertama
+dibuat lewat perintah `buat-admin` dari folder inti; user berikutnya bisa ditambahkan dari halaman kelola user.
+
+Nama "admin web" dipilih agar tidak tertukar dengan "admin" sebagai staf administrasi sebuah perusahaan atau
+organisasi.
 
 ## Kelola user
 
@@ -144,21 +178,23 @@ di dashboard website, dan hanya bisa dibuka admin. Di halaman ini admin bisa:
 - **menambah user.** Bila email sudah terdaftar, user itu cukup diberi akses ke lingkup ini. Bila belum, akunnya
   dibuat dengan kata sandi sementara yang ditampilkan **sekali** kepada admin, misalnya `k7mq-x3vt-9wcr-hp4n`.
   Admin menyampaikannya sendiri kepada user, lalu user menggantinya di halaman Profil.
-- **mengubah peran** antara admin dan anggota.
+- **mengubah peran**: antara admin super dan anggota di dashboard utama, atau antara admin web dan anggota di
+  website.
 - **mencabut akses** dari lingkup ini. Akun user tidak dihapus, dan aksesnya ke lingkup lain tetap ada.
 - **mengaktifkan atau menonaktifkan akun**, hanya di dashboard utama. Akun nonaktif tidak bisa login di lingkup
   mana pun, dan session yang sedang berjalan langsung berakhir. Karena berlaku di semua website, admin website
   tidak bisa melakukannya.
 - melihat **aktivitas terakhir** di lingkup ini.
 
-Admin tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin terakhir sebuah
-lingkup tidak bisa diturunkan atau dicabut, agar lingkup itu tidak terkunci. Hanya user yang punya akses ke
-lingkup ini yang bisa diubah dari halamannya.
+Admin tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin super terakhir
+tidak bisa diturunkan, dicabut, atau dinonaktifkan, agar Dapur tidak terkunci. Hanya user yang punya akses ke
+lingkup ini yang bisa diubah dari halamannya. Di website, admin super ikut terdaftar dengan keterangan "berlaku
+di semua website" dan hanya bisa diubah dari dashboard utama, jadi admin web tidak bisa mengubahnya.
 
 ## Riwayat akun
 
 Setiap perubahan akun dicatat bersama pelaku, user sasaran, lingkup tempat perubahan dilakukan, keterangan
-(misalnya `anggota → admin`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
+(misalnya `anggota → admin_web`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
 diubah, serta akun diaktifkan atau dinonaktifkan. Perubahan lewat perintah di terminal dicatat tanpa pelaku.
 
 Riwayat akun disimpan selamanya. Lihat dengan `vendor/bin/dapur-user riwayat-akun`, atau di bagian aktivitas
