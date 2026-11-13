@@ -36,7 +36,7 @@ final class Autentikasi
         $cocok     = password_verify($bentukSah ? $kataSandi : '', $user?->kataSandi ?? self::HASH_TIRUAN);
 
         // Semua penyebab gagal diperlakukan sama, agar keberadaan akun tidak bisa ditebak.
-        if ($user === null || ! $cocok || ! $user->aktif || ! $this->user->punyaAkses($user->id, $lingkup)) {
+        if ($user === null || ! $cocok || ! $user->aktif || $this->user->peran($user->id, $lingkup) === null) {
             $this->pembatas->catat($email, $ip);
             $this->riwayat?->catat(RiwayatMasuk::GAGAL, $user?->id, $lingkup, $ip, $perangkat);
 
