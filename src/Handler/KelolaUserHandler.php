@@ -6,6 +6,7 @@ namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\KataSandiSementara;
+use AdeMS\Dapur\User\Konteks;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PenyajiHalaman;
 use AdeMS\Dapur\User\Perangkat;
@@ -24,12 +25,12 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Halaman kelola user untuk admin satu lingkup: menambah user atau memberi akses, mengubah peran, mencabut
  * akses, serta (hanya bila diizinkan) mengaktifkan dan menonaktifkan akun. Dipasang di belakang
- * WajibMasukMiddleware; user berperan selain admin mendapat 403.
+ * WajibMasukMiddleware; user yang bukan admin super atau admin web mendapat 403.
  *
  * Aktif dan nonaktif berlaku untuk akun di semua lingkup, jadi hanya diizinkan di dashboard utama. Admin
- * tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin terakhir sebuah
- * lingkup tidak bisa diturunkan atau dicabut, agar lingkup itu tidak terkunci. Semua perubahan dicatat di
- * riwayat akun.
+ * tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin super terakhir
+ * tidak bisa diturunkan atau dicabut, agar Dapur tidak terkunci. Di website, admin super tampil sebagai admin
+ * otomatis dan hanya bisa diubah dari dashboard utama. Semua perubahan dicatat di riwayat akun.
  */
 final class KelolaUserHandler implements RequestHandlerInterface
 {
@@ -62,7 +63,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
 
         $peran = $request->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN)
             ?? $this->daftar->peran($user->id, $this->pintu->lingkup);
-        if ($peran !== DaftarUser::PERAN_ADMIN) {
+        if (! DaftarUser::peranAdmin(is_string($peran) ? $peran : null)) {
             return $this->penyaji->halaman($this->template, $request, ['ditolak' => true] + $this->dataKosong(), 403);
         }
 
@@ -113,13 +114,18 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Email tidak sah.', 422, $form);
         }
 
-        if (! in_array($peran, DaftarUser::PERAN, true)) {
+        if (! in_array($peran, DaftarUser::pilihanPeran($this->pintu->lingkup), true)) {
             return $this->galat($request, $admin, 'Peran tidak dikenal.', 422, $form);
         }
 
         $ada = $this->daftar->cariEmail($email);
         if ($ada !== null) {
-            if ($this->daftar->peran($ada->id, $this->pintu->lingkup) !== null) {
+            $sekarang = $this->daftar->peran($ada->id, $this->pintu->lingkup);
+            if ($sekarang === DaftarUser::PERAN_ADMIN_SUPER) {
+                return $this->galat($request, $admin, "{$ada->email} adalah admin super dan sudah menjadi admin di sini.", 422, $form);
+            }
+
+            if ($sekarang !== null) {
                 return $this->galat($request, $admin, "{$ada->email} sudah punya akses di sini.", 422, $form);
             }
 
@@ -128,7 +134,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             $sesi->simpan(ProfilHandler::SESI_PESAN, sprintf(
                 '%s sudah terdaftar; akses sebagai %s ditambahkan.%s',
                 $ada->email,
-                $peran,
+                strtolower(DaftarUser::label($peran)),
                 $ada->aktif ? '' : ' Akun ini sedang nonaktif.',
             ));
 
@@ -166,7 +172,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
         }
 
         [$target, $lama] = $sasaran;
-        if (! in_array($baru, DaftarUser::PERAN, true)) {
+        if (! in_array($baru, DaftarUser::pilihanPeran($this->pintu->lingkup), true)) {
             return $this->galat($request, $admin, 'Peran tidak dikenal.', 422);
         }
 
@@ -178,13 +184,13 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return new RedirectResponse($this->pintu->alamatKelolaUser());
         }
 
-        if ($lama === DaftarUser::PERAN_ADMIN && $this->daftar->jumlahAdmin($this->pintu->lingkup) <= 1) {
-            return $this->galat($request, $admin, "{$target->email} adalah admin terakhir di sini.", 422);
+        if ($this->adminSuperTerakhir($lama)) {
+            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
         }
 
         $this->daftar->ubahPeran($target->id, $this->pintu->lingkup, $baru);
         $this->catat($request, RiwayatAkun::UBAH_PERAN, $admin, $target->id, "{$lama} → {$baru}");
-        $sesi->simpan(ProfilHandler::SESI_PESAN, "Peran {$target->email} sekarang {$baru}.");
+        $sesi->simpan(ProfilHandler::SESI_PESAN, sprintf('Peran %s sekarang %s.', $target->email, strtolower(DaftarUser::label($baru))));
 
         return new RedirectResponse($this->pintu->alamatKelolaUser());
     }
@@ -202,8 +208,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Anda tidak bisa mencabut akses Anda sendiri.', 422);
         }
 
-        if ($peran === DaftarUser::PERAN_ADMIN && $this->daftar->jumlahAdmin($this->pintu->lingkup) <= 1) {
-            return $this->galat($request, $admin, "{$target->email} adalah admin terakhir di sini.", 422);
+        if ($this->adminSuperTerakhir($peran)) {
+            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
         }
 
         $this->daftar->cabutAkses($target->id, $this->pintu->lingkup);
@@ -230,6 +236,11 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Anda tidak bisa menonaktifkan akun Anda sendiri.', 422);
         }
 
+        if ($this->daftar->adalahAdminSuper($target->id) && ($isi['nilai'] ?? null) !== '1'
+            && $this->daftar->jumlahAdminSuper() <= 1) {
+            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
+        }
+
         $aktif = ($isi['nilai'] ?? null) === '1';
         if ($aktif !== $target->aktif) {
             $this->daftar->aturAktif($target->id, $aktif);
@@ -244,8 +255,9 @@ final class KelolaUserHandler implements RequestHandlerInterface
     }
 
     /**
-     * User sasaran dari form beserta perannya. Hanya user yang punya akses ke lingkup ini yang bisa
-     * diubah, agar admin satu website tidak bisa menyentuh user website lain lewat ID.
+     * User sasaran dari form beserta perannya. Hanya user yang punya akses tersendiri ke lingkup ini yang bisa
+     * diubah, agar admin satu website tidak bisa menyentuh user website lain lewat ID. Admin super di website
+     * tidak bisa diubah dari sana (hanya dari dashboard utama), jadi juga tidak termasuk.
      *
      * @param array<mixed> $isi
      * @return array{0: User, 1: string}|null
@@ -257,10 +269,21 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return null;
         }
 
-        $user  = $this->daftar->cariId((int) $id);
-        $peran = $user === null ? null : $this->daftar->peran($user->id, $this->pintu->lingkup);
+        $lingkup = $this->pintu->lingkup;
+        $user    = $this->daftar->cariId((int) $id);
+        if ($user === null || ($lingkup !== Konteks::LINGKUP_UTAMA && $this->daftar->adalahAdminSuper($user->id))) {
+            return null;
+        }
 
-        return $user === null || $peran === null ? null : [$user, $peran];
+        $peran = $this->daftar->peranTersimpan($user->id, $lingkup);
+
+        return $peran === null ? null : [$user, $peran];
+    }
+
+    /** Apakah perubahan pada user berperan ini akan menghapus admin super terakhir. */
+    private function adminSuperTerakhir(string $peran): bool
+    {
+        return $peran === DaftarUser::PERAN_ADMIN_SUPER && $this->daftar->jumlahAdminSuper() <= 1;
     }
 
     private function catat(ServerRequestInterface $request, string $peristiwa, User $admin, int $sasaranId, string $keterangan = ''): void
@@ -285,18 +308,21 @@ final class KelolaUserHandler implements RequestHandlerInterface
     /** @param array<string, mixed> $data */
     private function halaman(ServerRequestInterface $request, User $admin, array $data, int $status = 200): ResponseInterface
     {
-        $lingkup     = $this->pintu->lingkup;
-        $jumlahAdmin = $this->daftar->jumlahAdmin($lingkup);
+        $lingkup          = $this->pintu->lingkup;
+        $jumlahAdminSuper = $this->daftar->jumlahAdminSuper();
+        $diWebsite        = $lingkup !== Konteks::LINGKUP_UTAMA;
 
         $daftar = [];
         foreach ($this->daftar->userDiLingkup($lingkup) as $u) {
             $diri       = $u['id'] === $admin->id;
-            $adminAkhir = $u['peran'] === DaftarUser::PERAN_ADMIN && $jumlahAdmin <= 1;
+            $super      = $u['peran'] === DaftarUser::PERAN_ADMIN_SUPER;
+            $terkunci   = $diri || ($super && ($diWebsite || $jumlahAdminSuper <= 1));
             $daftar[]   = $u + [
                 'diriSendiri'   => $diri,
-                'bisaUbahPeran' => ! $diri && ! $adminAkhir,
-                'bisaCabut'     => ! $diri && ! $adminAkhir,
-                'bisaAturAktif' => $this->kelolaAkun && ! $diri,
+                'labelPeran'    => DaftarUser::label($u['peran']),
+                'bisaUbahPeran' => ! $terkunci,
+                'bisaCabut'     => ! $terkunci,
+                'bisaAturAktif' => $this->kelolaAkun && ! $diri && ! ($super && $u['aktif'] && $jumlahAdminSuper <= 1),
                 'login'         => $u['terakhir_masuk'] === null ? null : $this->waktu($u['terakhir_masuk']),
             ];
         }
@@ -331,7 +357,10 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'sandiBaru'     => null,
             'daftarUser'    => [],
             'aktivitas'     => [],
-            'peranTersedia' => DaftarUser::PERAN,
+            'peranTersedia' => array_combine(
+                DaftarUser::pilihanPeran($this->pintu->lingkup),
+                array_map(DaftarUser::label(...), DaftarUser::pilihanPeran($this->pintu->lingkup)),
+            ),
             'kelolaAkun'    => $this->kelolaAkun,
             'lingkup'       => $this->pintu->lingkup,
             'alamatKelola'  => $this->pintu->alamatKelolaUser(),
