@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User;
 
+use AdeMS\Dapur\User\Handler\KelolaUserHandler;
 use AdeMS\Dapur\User\Handler\KeluarHandler;
 use AdeMS\Dapur\User\Handler\MasukHandler;
 use AdeMS\Dapur\User\Handler\ProfilHandler;
@@ -32,6 +33,7 @@ final class PabrikLayanan
                 self::tabel($c),
                 $c->get(Pengaturan::class)->riwayatHari,
             ),
+            RiwayatAkun::class => new RiwayatAkun($c->get(Adapter::class), self::tabel($c)),
             Autentikasi::class => new Autentikasi(
                 $c->get(DaftarUser::class),
                 $c->get(PembatasPercobaan::class),
@@ -74,6 +76,31 @@ final class PabrikLayanan
             $penyaji ?? new PenyajiDasar($c->get(TemplateRendererInterface::class), $pintu),
             $pintu,
             $c->get(Pengaturan::class)->zonaWaktu,
+            $template,
+            $c->get(RiwayatAkun::class),
+        );
+    }
+
+    /**
+     * Halaman kelola user untuk admin pintu ini.
+     *
+     * @param bool $kelolaAkun izinkan aktif/nonaktif akun; akun berlaku di semua lingkup, jadi sebaiknya
+     *                         hanya untuk dashboard utama
+     */
+    public static function kelolaUser(
+        ContainerInterface $c,
+        Pintu $pintu,
+        ?PenyajiHalaman $penyaji = null,
+        string $template = KelolaUserHandler::TEMPLATE,
+        bool $kelolaAkun = false,
+    ): KelolaUserHandler {
+        return new KelolaUserHandler(
+            $c->get(DaftarUser::class),
+            $c->get(RiwayatAkun::class),
+            $penyaji ?? new PenyajiDasar($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+            $c->get(Pengaturan::class)->zonaWaktu,
+            $kelolaAkun,
             $template,
         );
     }
