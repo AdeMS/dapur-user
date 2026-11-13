@@ -9,9 +9,8 @@ use RuntimeException;
 /**
  * Nama tabel user, dengan awalan dari pengaturan 'awalan_tabel'.
  *
- * Tanpa awalan, tabelnya bernama user, user_akses, user_percobaan_masuk, user_riwayat_masuk, dan
- * user_riwayat_akun. Awalan
- * hanya boleh berisi huruf, angka, dan garis bawah, karena ikut tersusun ke dalam perintah SQL.
+ * Tanpa awalan, tabelnya bernama user, user_akses, user_percobaan_masuk, user_riwayat_masuk,
+ * user_riwayat_akun, dan user_pengaturan. Awalan hanya boleh berisi huruf, angka, dan garis bawah, karena ikut tersusun ke dalam perintah SQL.
  */
 final class NamaTabel
 {
@@ -62,5 +61,10 @@ final class NamaTabel
     public function riwayatAkun(): string
     {
         return $this->awalan . 'user_riwayat_akun';
+    }
+
+    public function pengaturan(): string
+    {
+        return $this->awalan . 'user_pengaturan';
     }
 }
