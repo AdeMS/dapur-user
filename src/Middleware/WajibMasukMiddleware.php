@@ -28,6 +28,9 @@ final class WajibMasukMiddleware implements MiddlewareInterface
     /** Sidik jari kata sandi saat login (User::sidikSandi()). */
     public const SESI_SANDI = 'user.sandi';
 
+    /** Nama atribut request berisi peran user di lingkup pintu ini, misalnya 'admin' atau 'anggota'. */
+    public const ATRIBUT_PERAN = 'user.peran';
+
     public function __construct(
         private readonly DaftarUser $daftar,
         private readonly Pintu $pintu,
@@ -45,8 +48,11 @@ final class WajibMasukMiddleware implements MiddlewareInterface
             ? $this->daftar->cariId($id)
             : null;
 
-        if ($user === null || ! $user->aktif || ! $this->sandiSama($sesi, $user)
-            || ! $this->daftar->punyaAkses($user->id, $this->pintu->lingkup)) {
+        $peran = $user !== null && $user->aktif && $this->sandiSama($sesi, $user)
+            ? $this->daftar->peran($user->id, $this->pintu->lingkup)
+            : null;
+
+        if ($user === null || $peran === null) {
             if ($id !== null) {
                 // Session tidak dihancurkan agar alamat tujuan di bawah tetap tersimpan.
                 $sesi->hapus(self::SESI_USER);
@@ -68,7 +74,7 @@ final class WajibMasukMiddleware implements MiddlewareInterface
 
         $sesi->simpan(self::SESI_TERAKHIR, time());
 
-        return $handler->handle($request->withAttribute(User::class, $user));
+        return $handler->handle($request->withAttribute(User::class, $user)->withAttribute(self::ATRIBUT_PERAN, $peran));
     }
 
     /**
