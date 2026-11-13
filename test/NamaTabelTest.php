@@ -8,6 +8,7 @@ use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\NamaTabel;
 use AdeMS\Dapur\User\PembatasPercobaan;
 use AdeMS\Dapur\User\Perintah;
+use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use Laminas\Db\Metadata\Source\Factory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -63,7 +64,7 @@ final class NamaTabelTest extends TestCase
         $db    = DatabaseUji::baru($tabel);
 
         self::assertEqualsCanonicalizing(
-            ['xyz_user', 'xyz_user_akses', 'xyz_user_percobaan_masuk', 'xyz_user_riwayat_masuk'],
+            ['xyz_user', 'xyz_user_akses', 'xyz_user_percobaan_masuk', 'xyz_user_riwayat_masuk', 'xyz_user_riwayat_akun'],
             Factory::createSourceFromAdapter($db)->getTableNames(),
         );
 
@@ -80,9 +81,13 @@ final class NamaTabelTest extends TestCase
         $riwayat->catat(RiwayatMasuk::MASUK, $id, 'dashboard', '192.0.2.1', 'Uji');
         self::assertCount(1, $riwayat->untukUser($id));
 
+        $akun = new RiwayatAkun($db, $tabel);
+        $akun->catat(RiwayatAkun::BERI_AKSES, null, $id, 'dashboard');
+        self::assertCount(1, $akun->untukUser($id));
+
         ob_start();
         (new Perintah($db, $daftar, static fn (): string => '', 'dashboard', null, $tabel))->jalankan(['pasang']);
         $keluaran = (string) ob_get_clean();
-        self::assertSame(4, preg_match_all('/^Tabel xyz_\S+\s+sudah ada$/m', $keluaran));
+        self::assertSame(5, preg_match_all('/^Tabel xyz_\S+\s+sudah ada$/m', $keluaran));
     }
 }
