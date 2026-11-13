@@ -51,7 +51,10 @@ final class Perintah
         };
     }
 
-    /** Membuat tabel yang belum ada. Tabel yang sudah ada tidak diubah, jadi aman diulang. */
+    /**
+     * Membuat tabel yang belum ada, lalu mengubah peran 'admin' dari versi 1.x menjadi admin super (lingkup
+     * utama) atau admin web (website). Tabel yang sudah ada tidak diubah, jadi aman diulang.
+     */
     private function pasang(): int
     {
         $ada = Factory::createSourceFromAdapter($this->db)->getTableNames();
@@ -64,6 +67,11 @@ final class Perintah
 
             $this->db->query($sql, Adapter::QUERY_MODE_EXECUTE);
             printf("Tabel %-28s dibuat%s", $tabel, PHP_EOL);
+        }
+
+        $diubah = $this->user->perbaruiPeranLama();
+        if ($diubah > 0) {
+            printf('%sPeran admin lama diperbarui: %d akses (admin super di dashboard utama, admin web di website).%s', PHP_EOL, $diubah, PHP_EOL);
         }
 
         echo PHP_EOL . 'Tabel user sudah siap; data yang sudah ada tidak diubah.' . PHP_EOL;
@@ -87,11 +95,12 @@ final class Perintah
             return 1;
         }
 
-        $id = $this->user->buat($email, $nama ?? $email, $sandi);
-        $this->user->tambahAkses($id, $this->lingkup);
+        $peran = DaftarUser::peranAdminUntuk($this->lingkup);
+        $id    = $this->user->buat($email, $nama ?? $email, $sandi);
+        $this->user->tambahAkses($id, $this->lingkup, $peran);
         $this->catatAkun(RiwayatAkun::BUAT_USER, $id, $nama ?? $email);
-        $this->catatAkun(RiwayatAkun::BERI_AKSES, $id, 'peran ' . DaftarUser::PERAN_ADMIN);
-        printf("Admin %s dibuat untuk lingkup '%s'.%s", DaftarUser::normalkanEmail($email), $this->lingkup, PHP_EOL);
+        $this->catatAkun(RiwayatAkun::BERI_AKSES, $id, 'peran ' . $peran);
+        printf("%s %s dibuat untuk lingkup '%s'.%s", DaftarUser::label($peran), DaftarUser::normalkanEmail($email), $this->lingkup, PHP_EOL);
 
         return 0;
     }
@@ -99,12 +108,18 @@ final class Perintah
     /** Memastikan akses ke lingkup ini, lalu menawarkan ganti kata sandi (bawaan: tidak). */
     private function userSudahAda(User $user): int
     {
-        if ($this->user->punyaAkses($user->id, $this->lingkup)) {
-            printf("User %s sudah ada dan sudah memiliki akses ke '%s'.%s", $user->email, $this->lingkup, PHP_EOL);
+        $peran = DaftarUser::peranAdminUntuk($this->lingkup);
+        $lama  = $this->user->peranTersimpan($user->id, $this->lingkup);
+        if ($lama === $peran) {
+            printf("User %s sudah ada dan sudah menjadi %s di '%s'.%s", $user->email, strtolower(DaftarUser::label($peran)), $this->lingkup, PHP_EOL);
+        } elseif ($lama !== null) {
+            $this->user->ubahPeran($user->id, $this->lingkup, $peran);
+            $this->catatAkun(RiwayatAkun::UBAH_PERAN, $user->id, $lama . ' → ' . $peran);
+            printf("User %s sudah ada; perannya di '%s' diubah menjadi %s.%s", $user->email, $this->lingkup, strtolower(DaftarUser::label($peran)), PHP_EOL);
         } else {
-            $this->user->tambahAkses($user->id, $this->lingkup);
-            $this->catatAkun(RiwayatAkun::BERI_AKSES, $user->id, 'peran ' . DaftarUser::PERAN_ADMIN);
-            printf("User %s sudah ada; akses admin ke '%s' ditambahkan.%s", $user->email, $this->lingkup, PHP_EOL);
+            $this->user->tambahAkses($user->id, $this->lingkup, $peran);
+            $this->catatAkun(RiwayatAkun::BERI_AKSES, $user->id, 'peran ' . $peran);
+            printf("User %s sudah ada; akses %s ke '%s' ditambahkan.%s", $user->email, strtolower(DaftarUser::label($peran)), $this->lingkup, PHP_EOL);
         }
 
         if ($this->tanya === null) {
@@ -175,7 +190,11 @@ final class Perintah
 
             printf('Akses %s%s:%s', $user->email, $user->aktif ? '' : ' (nonaktif)', PHP_EOL);
             foreach ($akses as $a) {
-                printf('  %-30s  %s%s', $a['lingkup'], $a['peran'], PHP_EOL);
+                printf('  %-30s  %s%s', $a['lingkup'], DaftarUser::label($a['peran']), PHP_EOL);
+            }
+
+            if ($this->user->adalahAdminSuper($user->id)) {
+                echo '  Sebagai admin super, user ini juga admin di semua website.' . PHP_EOL;
             }
 
             return 0;
@@ -192,9 +211,9 @@ final class Perintah
         printf("User dengan akses ke '%s' (waktu %s):%s", $this->lingkup, $zona->getName(), PHP_EOL);
         foreach ($daftar as $u) {
             printf(
-                '  %-32s  %-8s  %-8s  %s  %s%s',
+                '  %-32s  %-24s  %-8s  %s  %s%s',
                 $u['email'],
-                $u['peran'],
+                DaftarUser::label($u['peran']) . ($u['otomatis'] ? ' (otomatis)' : ''),
                 $u['aktif'] ? 'aktif' : 'nonaktif',
                 $u['terakhir_masuk'] === null ? 'belum pernah login' : 'login ' . $this->waktu($u['terakhir_masuk'], $zona),
                 $u['nama'],
@@ -205,7 +224,7 @@ final class Perintah
         return 0;
     }
 
-    /** Mencabut akses user dari lingkup ini; admin terakhir tidak bisa dicabut agar lingkup tidak terkunci. */
+    /** Mencabut akses user dari lingkup ini; admin super terakhir tidak bisa dicabut agar Dapur tidak terkunci. */
     private function cabutAkses(string $email): int
     {
         $user = $email !== '' ? $this->user->cariEmail($email) : null;
@@ -213,16 +232,19 @@ final class Perintah
             return $this->gagal('User tidak ditemukan. Pemakaian: dapur-user cabut-akses <email>');
         }
 
-        $peran = $this->user->peran($user->id, $this->lingkup);
+        $peran = $this->user->peranTersimpan($user->id, $this->lingkup);
         if ($peran === null) {
-            return $this->gagal(sprintf("%s tidak punya akses ke '%s'.", $user->email, $this->lingkup));
+            $pesan = $this->user->adalahAdminSuper($user->id)
+                ? sprintf("%s adalah admin super; aksesnya ke '%s' berlaku otomatis dan hanya bisa dicabut dari dashboard utama.", $user->email, $this->lingkup)
+                : sprintf("%s tidak punya akses ke '%s'.", $user->email, $this->lingkup);
+
+            return $this->gagal($pesan);
         }
 
-        if ($peran === DaftarUser::PERAN_ADMIN && $this->user->jumlahAdmin($this->lingkup) <= 1) {
+        if ($peran === DaftarUser::PERAN_ADMIN_SUPER && $this->user->jumlahAdminSuper() <= 1) {
             return $this->gagal(sprintf(
-                "%s adalah admin terakhir '%s'; buat admin lain lebih dulu dengan buat-admin.",
+                '%s adalah admin super terakhir; buat admin super lain lebih dulu dengan buat-admin dari folder inti.',
                 $user->email,
-                $this->lingkup,
             ));
         }
 
@@ -379,8 +401,9 @@ final class Perintah
         echo <<<BANTUAN
             Pemakaian: dapur-user <perintah>
 
-              pasang                          Membuat tabel yang belum ada (aman diulang)
-              buat-admin <email> [--nama=..]  Membuat admin, atau menambah akses user yang sudah ada
+              pasang                          Membuat tabel yang belum ada dan memperbarui peran lama (aman diulang)
+              buat-admin <email> [--nama=..]  Membuat admin super (di inti) atau admin web (dengan --website),
+                                              atau menjadikan user yang sudah ada admin di lingkup ini
               ganti-sandi <email>             Mengganti kata sandi user
               riwayat <email> [--jumlah=20]   Menampilkan riwayat login user
               daftar-akses [<email>]          Menampilkan user di lingkup ini, atau semua akses satu user
