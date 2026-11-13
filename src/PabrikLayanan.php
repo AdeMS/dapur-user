@@ -34,6 +34,7 @@ final class PabrikLayanan
                 $c->get(Pengaturan::class)->riwayatHari,
             ),
             RiwayatAkun::class => new RiwayatAkun($c->get(Adapter::class), self::tabel($c)),
+            PengaturanUser::class => new PengaturanUser($c->get(Adapter::class), self::tabel($c)),
             Autentikasi::class => new Autentikasi(
                 $c->get(DaftarUser::class),
                 $c->get(PembatasPercobaan::class),
