@@ -10,7 +10,14 @@ use Laminas\Db\ResultSet\ResultSetInterface;
 /** Akses data user dan hak aksesnya per lingkup. */
 final class DaftarUser
 {
+    /** Admin bisa mengelola user di lingkupnya. */
     public const PERAN_ADMIN = 'admin';
+
+    /** Anggota bisa login dan memakai halaman di lingkupnya, tetapi tidak bisa mengelola user. */
+    public const PERAN_ANGGOTA = 'anggota';
+
+    /** Semua peran yang dikenal, berurutan untuk pilihan di form. */
+    public const PERAN = [self::PERAN_ADMIN, self::PERAN_ANGGOTA];
 
     /** Nama tabel yang sudah diberi tanda kutip sesuai database. */
     private readonly string $tUser;
@@ -80,6 +87,17 @@ final class DaftarUser
         if (! $this->punyaAkses($id, $lingkup)) {
             $this->jalankan("INSERT INTO {$this->tAkses} (user_id, lingkup, peran) VALUES (?, ?, ?)", [$id, $lingkup, $peran]);
         }
+    }
+
+    public function ubahPeran(int $id, string $lingkup, string $peran): void
+    {
+        $this->jalankan("UPDATE {$this->tAkses} SET peran = ? WHERE user_id = ? AND lingkup = ?", [$peran, $id, $lingkup]);
+    }
+
+    /** Mengaktifkan atau menonaktifkan akun. Akun nonaktif tidak bisa login di lingkup mana pun. */
+    public function aturAktif(int $id, bool $aktif): void
+    {
+        $this->jalankan("UPDATE {$this->tUser} SET aktif = ? WHERE id = ?", [$aktif ? 1 : 0, $id]);
     }
 
     /** Mencabut akses user dari satu lingkup. Akun user sendiri tidak dihapus. */
