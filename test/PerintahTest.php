@@ -7,6 +7,7 @@ namespace AdeMS\Dapur\User\Test;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\NamaTabel;
 use AdeMS\Dapur\User\Perintah;
+use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use Laminas\Db\Adapter\Adapter;
 use PHPUnit\Framework\TestCase;
@@ -46,6 +47,8 @@ final class PerintahTest extends TestCase
             },
             new NamaTabel(),
             new RiwayatMasuk($this->db),
+            null,
+            new RiwayatAkun($this->db),
         );
     }
 
@@ -75,8 +78,20 @@ final class PerintahTest extends TestCase
         self::assertMatchesRegularExpression('/Tabel user_percobaan_masuk\s+dibuat/', $this->keluaran);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertSame(4, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
+        self::assertSame(5, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
         self::assertSame(0, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
+    }
+
+    public function testPasangDariVersiSatuSatuHanyaMembuatRiwayatAkun(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $this->db->query('DROP TABLE "user_riwayat_akun"', Adapter::QUERY_MODE_EXECUTE);
+
+        $this->jalankan($this->perintah(), ['pasang']);
+
+        self::assertSame(1, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
+        self::assertMatchesRegularExpression('/Tabel user_riwayat_akun\s+dibuat/', $this->keluaran);
+        self::assertNotNull($this->daftar->cariId($id), 'Data lama tetap ada.');
     }
 
     public function testBuatAdmin(): void
@@ -346,5 +361,39 @@ final class PerintahTest extends TestCase
 
         self::assertSame(0, $this->jalankan($this->perintah(tanya: ['y']), ['cabut-akses', 'budi@contoh.com']));
         self::assertFalse($this->daftar->punyaAkses($b, 'dashboard'));
+    }
+
+    public function testBuatAdminDanCabutAksesTercatatDiRiwayatAkun(): void
+    {
+        $this->jalankan($this->perintah([self::SANDI, self::SANDI]), ['buat-admin', 'admin@contoh.com', '--nama=Admin']);
+        $this->jalankan($this->perintah([self::SANDI, self::SANDI]), ['buat-admin', 'budi@contoh.com', '--nama=Budi']);
+        $this->jalankan($this->perintah(), ['cabut-akses', 'budi@contoh.com']);
+
+        $budi    = $this->daftar->cariEmail('budi@contoh.com');
+        $riwayat = (new RiwayatAkun($this->db))->untukUser((int) $budi?->id);
+
+        self::assertSame(
+            [RiwayatAkun::CABUT_AKSES, RiwayatAkun::BERI_AKSES, RiwayatAkun::BUAT_USER],
+            array_column($riwayat, 'peristiwa'),
+        );
+        self::assertNull($riwayat[0]['pelaku'], 'Lewat terminal tanpa pelaku.');
+        self::assertSame('peran admin', $riwayat[0]['keterangan']);
+    }
+
+    public function testRiwayatAkun(): void
+    {
+        $this->jalankan($this->perintah([self::SANDI, self::SANDI]), ['buat-admin', 'admin@contoh.com', '--nama=Admin']);
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['riwayat-akun']));
+        self::assertStringContainsString("Riwayat akun di 'dashboard'", $this->keluaran);
+        self::assertMatchesRegularExpression('/beri_akses\s+admin@contoh\.com\s+oleh \(terminal\)/', $this->keluaran);
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['riwayat-akun', 'admin@contoh.com']));
+        self::assertStringContainsString('buat_user', $this->keluaran);
+
+        self::assertSame(0, $this->jalankan($this->perintah(lingkup: 'toko.contoh.com'), ['riwayat-akun']));
+        self::assertStringContainsString('Belum ada riwayat akun.', $this->keluaran);
+
+        self::assertSame(1, $this->jalankan($this->perintah(), ['riwayat-akun', 'tidak@contoh.com']));
     }
 }
