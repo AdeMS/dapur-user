@@ -9,7 +9,7 @@
  * @var array{email: string, sandi: string}|null $sandiBaru  kata sandi sementara user baru, tampil sekali
  * @var list<array<string, mixed>> $daftarUser
  * @var list<array<string, mixed>> $aktivitas
- * @var list<string> $peranTersedia
+ * @var array<string, string> $peranTersedia   nilai peran => label, untuk lingkup ini
  * @var bool $kelolaAkun                    boleh mengaktifkan dan menonaktifkan akun
  * @var string $lingkup
  * @var string $alamatKelola
@@ -77,8 +77,8 @@ $warnaPeristiwa = [
                 <div class="col-6 col-md-2">
                     <label class="form-label" for="kelola-peran">Peran</label>
                     <select class="form-select" id="kelola-peran" name="peran">
-<?php foreach ($this->peranTersedia as $p) : ?>
-                        <option value="<?= $this->escapeHtmlAttr($p) ?>"<?= $p === $this->formPeran ? ' selected' : '' ?>><?= $this->escapeHtml($p) ?></option>
+<?php foreach ($this->peranTersedia as $p => $labelPeran) : ?>
+                        <option value="<?= $this->escapeHtmlAttr($p) ?>"<?= $p === $this->formPeran ? ' selected' : '' ?>><?= $this->escapeHtml($labelPeran) ?></option>
 <?php endforeach ?>
                     </select>
                 </div>
@@ -91,7 +91,7 @@ $warnaPeristiwa = [
     <div class="card mb-4">
         <div class="card-body">
             <h2 class="h5 card-title">Daftar user</h2>
-            <p class="small text-body-secondary">Admin bisa mengelola user di sini; anggota hanya bisa login dan memakai halaman di sini. Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+            <p class="small text-body-secondary">Admin bisa mengelola user di sini; anggota hanya bisa login dan memakai halaman di sini.<?php if ($this->lingkup !== AdeMS\Dapur\User\Konteks::LINGKUP_UTAMA) : ?> Admin super adalah admin di semua website dan hanya bisa diubah dari dashboard utama.<?php endif ?> Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
                     <thead>
@@ -110,20 +110,27 @@ $warnaPeristiwa = [
                                 <div class="fw-semibold"><?= $this->escapeHtml($u['nama']) ?><?php if ($u['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
                                 <div class="small text-body-secondary"><?= $this->escapeHtml($u['email']) ?></div>
                             </td>
-                            <td><span class="badge text-bg-<?= $u['peran'] === 'admin' ? 'success' : 'info' ?>"><?= $this->escapeHtml($u['peran']) ?></span></td>
+                            <td>
+                                <span class="badge text-bg-<?= $u['peran'] === 'anggota' ? 'info' : ($u['peran'] === 'admin_super' ? 'warning' : 'success') ?>"><?= $this->escapeHtml($u['labelPeran']) ?></span>
+<?php if ($u['otomatis']) : ?>
+                                <div class="small text-body-secondary">berlaku di semua website</div>
+<?php endif ?>
+                            </td>
                             <td><?= $u['aktif'] ? '<span class="badge text-bg-success">aktif</span>' : '<span class="badge text-bg-danger">nonaktif</span>' ?></td>
                             <td class="text-nowrap small"><?= $u['login'] === null ? '<span class="text-body-secondary">belum pernah</span>' : $this->escapeHtml($u['login']) ?></td>
                             <td class="text-end">
                                 <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
 <?php if ($u['bisaUbahPeran']) : ?>
-<?php $peranLain = $u['peran'] === 'admin' ? 'anggota' : 'admin' ?>
+<?php $peranLain = array_values(array_diff(array_keys($this->peranTersedia), [$u['peran']]))[0] ?? null ?>
+<?php if ($peranLain !== null) : ?>
                                     <form method="post" action="<?= $aksi ?>">
                                         <?= $csrf ?>
                                         <input type="hidden" name="aksi" value="peran">
                                         <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
                                         <input type="hidden" name="peran" value="<?= $this->escapeHtmlAttr($peranLain) ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Jadikan <?= $this->escapeHtml($peranLain) ?></button>
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Jadikan <?= $this->escapeHtml(strtolower($this->peranTersedia[$peranLain])) ?></button>
                                     </form>
+<?php endif ?>
 <?php endif ?>
 <?php if ($u['bisaAturAktif']) : ?>
                                     <form method="post" action="<?= $aksi ?>" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode(($u['aktif'] ? 'Nonaktifkan akun ' : 'Aktifkan kembali akun ') . $u['email'] . '? Berlaku di semua website.')) ?>)">
