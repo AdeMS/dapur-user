@@ -64,7 +64,7 @@ final class NamaTabelTest extends TestCase
         $db    = DatabaseUji::baru($tabel);
 
         self::assertEqualsCanonicalizing(
-            ['xyz_user', 'xyz_user_akses', 'xyz_user_percobaan_masuk', 'xyz_user_riwayat_masuk', 'xyz_user_riwayat_akun'],
+            ['xyz_user', 'xyz_user_akses', 'xyz_user_percobaan_masuk', 'xyz_user_riwayat_masuk', 'xyz_user_riwayat_akun', 'xyz_user_pengaturan'],
             Factory::createSourceFromAdapter($db)->getTableNames(),
         );
 
@@ -88,6 +88,6 @@ final class NamaTabelTest extends TestCase
         ob_start();
         (new Perintah($db, $daftar, static fn (): string => '', 'dashboard', null, $tabel))->jalankan(['pasang']);
         $keluaran = (string) ob_get_clean();
-        self::assertSame(5, preg_match_all('/^Tabel xyz_\S+\s+sudah ada$/m', $keluaran));
+        self::assertSame(6, preg_match_all('/^Tabel xyz_\S+\s+sudah ada$/m', $keluaran));
     }
 }
