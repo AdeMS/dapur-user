@@ -79,6 +79,23 @@ final class Skema
                 CONSTRAINT {$q("fk_{$a}user_riwayat_user")} FOREIGN KEY (user_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
             ) {$opsi}",
+            $t->riwayatAkun() => "CREATE TABLE IF NOT EXISTS {$q($t->riwayatAkun())} (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                pelaku_id BIGINT UNSIGNED NULL,
+                sasaran_id BIGINT UNSIGNED NOT NULL,
+                lingkup VARCHAR(190) NOT NULL,
+                peristiwa VARCHAR(30) NOT NULL,
+                keterangan VARCHAR(255) NOT NULL DEFAULT '',
+                ip VARCHAR(45) NOT NULL DEFAULT '',
+                perangkat VARCHAR(255) NOT NULL DEFAULT '',
+                waktu DATETIME NOT NULL,
+                KEY {$q("idx_{$a}user_riwayat_akun_sasaran")} (sasaran_id, waktu),
+                KEY {$q("idx_{$a}user_riwayat_akun_lingkup")} (lingkup, waktu),
+                CONSTRAINT {$q("fk_{$a}user_riwayat_akun_pelaku")} FOREIGN KEY (pelaku_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE SET NULL,
+                CONSTRAINT {$q("fk_{$a}user_riwayat_akun_sasaran")} FOREIGN KEY (sasaran_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
+            ) {$opsi}",
         ];
     }
 
@@ -115,6 +132,17 @@ final class Skema
                 lingkup TEXT NOT NULL,
                 peristiwa TEXT NOT NULL,
                 ip TEXT NOT NULL,
+                perangkat TEXT NOT NULL DEFAULT '',
+                waktu TEXT NOT NULL
+            )",
+            $t->riwayatAkun() => "CREATE TABLE IF NOT EXISTS {$q($t->riwayatAkun())} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pelaku_id INTEGER NULL REFERENCES {$q($t->user())} (id) ON DELETE SET NULL,
+                sasaran_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
+                lingkup TEXT NOT NULL,
+                peristiwa TEXT NOT NULL,
+                keterangan TEXT NOT NULL DEFAULT '',
+                ip TEXT NOT NULL DEFAULT '',
                 perangkat TEXT NOT NULL DEFAULT '',
                 waktu TEXT NOT NULL
             )",
