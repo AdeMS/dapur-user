@@ -117,9 +117,27 @@ final class WajibMasukTest extends TestCase
 
     public function testSesiLingkupLainTidakBerlaku(): void
     {
+        $this->daftar->ubahPeran($this->id, 'dashboard', DaftarUser::PERAN_ANGGOTA);
         $this->login();
 
         self::assertSame(302, $this->proses('blog.contoh.com')->getStatusCode());
+    }
+
+    public function testAdminSuperDiterimaDiWebsiteManaPun(): void
+    {
+        $this->login();
+
+        self::assertSame(200, $this->proses('blog.contoh.com')->getStatusCode());
+        self::assertSame('admin_super', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
+    }
+
+    public function testPeranLamaDibacaSebagaiPeranBaru(): void
+    {
+        $this->db->query('UPDATE "user_akses" SET peran = ? WHERE user_id = ?', ['admin', $this->id]);
+        $this->login();
+        $this->proses();
+
+        self::assertSame('admin_super', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
     }
 
     public function testHalamanYangDimintaDisimpanUntukSetelahLogin(): void
@@ -198,6 +216,6 @@ final class WajibMasukTest extends TestCase
         $this->login();
         $this->proses();
 
-        self::assertSame('admin', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
+        self::assertSame('admin_super', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
     }
 }
