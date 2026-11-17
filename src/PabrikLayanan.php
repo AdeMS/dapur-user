@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User;
 
+use AdeMS\Dapur\Email\PengirimEmail;
+use AdeMS\Dapur\Email\SuratTemplat;
+use AdeMS\Dapur\User\Handler\AturSandiHandler;
+use AdeMS\Dapur\User\Handler\HalamanPublik;
 use AdeMS\Dapur\User\Handler\KelolaUserHandler;
 use AdeMS\Dapur\User\Handler\KeluarHandler;
+use AdeMS\Dapur\User\Handler\LupaSandiHandler;
 use AdeMS\Dapur\User\Handler\MasukHandler;
 use AdeMS\Dapur\User\Handler\ProfilHandler;
+use AdeMS\Dapur\User\Handler\VerifikasiEmailHandler;
 use AdeMS\Dapur\User\Middleware\MulaiSesiMiddleware;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use Laminas\Db\Adapter\Adapter;
@@ -35,6 +41,12 @@ final class PabrikLayanan
             ),
             RiwayatAkun::class => new RiwayatAkun($c->get(Adapter::class), self::tabel($c)),
             PengaturanUser::class => new PengaturanUser($c->get(Adapter::class), self::tabel($c)),
+            TokenUser::class => new TokenUser($c->get(Adapter::class), self::tabel($c)),
+            SuratUser::class => new SuratUser(
+                $c->get(PengirimEmail::class),
+                $c->get(SuratTemplat::class),
+                $c->get(Pengaturan::class)->alamatWebsite,
+            ),
             Autentikasi::class => new Autentikasi(
                 $c->get(DaftarUser::class),
                 $c->get(PembatasPercobaan::class),
@@ -52,7 +64,7 @@ final class PabrikLayanan
 
     public static function masuk(ContainerInterface $c, Pintu $pintu): MasukHandler
     {
-        return new MasukHandler($c->get(Autentikasi::class), $c->get(TemplateRendererInterface::class), $pintu);
+        return new MasukHandler($c->get(Autentikasi::class), $c->get(TemplateRendererInterface::class), $pintu, $c->get(SuratUser::class));
     }
 
     public static function keluar(ContainerInterface $c, Pintu $pintu): KeluarHandler
@@ -79,6 +91,34 @@ final class PabrikLayanan
             $c->get(Pengaturan::class)->zonaWaktu,
             $template,
             $c->get(RiwayatAkun::class),
+            $c->get(TokenUser::class),
+            $c->get(SuratUser::class),
+            self::namaWebsite($c),
+        );
+    }
+
+    /**
+     * Halaman Pengaturan & Privasi (kata sandi, email, riwayat masuk). Penyaji seperti pada profil().
+     */
+    public static function pengaturan(
+        ContainerInterface $c,
+        Pintu $pintu,
+        ?PenyajiHalaman $penyaji = null,
+        string $template = ProfilHandler::TEMPLATE_PENGATURAN,
+    ): ProfilHandler {
+        return new ProfilHandler(
+            $c->get(DaftarUser::class),
+            $c->get(PembatasPercobaan::class),
+            $c->get(RiwayatMasuk::class),
+            $penyaji ?? new PenyajiDasar($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+            $c->get(Pengaturan::class)->zonaWaktu,
+            $template,
+            $c->get(RiwayatAkun::class),
+            $c->get(TokenUser::class),
+            $c->get(SuratUser::class),
+            self::namaWebsite($c),
+            ProfilHandler::HALAMAN_PENGATURAN,
         );
     }
 
@@ -103,7 +143,59 @@ final class PabrikLayanan
             $c->get(Pengaturan::class)->zonaWaktu,
             $kelolaAkun,
             $template,
+            $c->get(TokenUser::class),
+            $c->get(SuratUser::class),
+            self::namaWebsite($c),
         );
+    }
+
+    /** Halaman lupa kata sandi (tanpa login). */
+    public static function lupaSandi(ContainerInterface $c, Pintu $pintu): LupaSandiHandler
+    {
+        return new LupaSandiHandler(
+            $c->get(DaftarUser::class),
+            $c->get(TokenUser::class),
+            $c->get(SuratUser::class),
+            $c->get(PembatasPercobaan::class),
+            new HalamanPublik($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+            self::namaWebsite($c),
+        );
+    }
+
+    /** Halaman membuat kata sandi dari tautan undangan atau lupa kata sandi (tanpa login). */
+    public static function aturSandi(ContainerInterface $c, Pintu $pintu): AturSandiHandler
+    {
+        return new AturSandiHandler(
+            $c->get(DaftarUser::class),
+            $c->get(TokenUser::class),
+            $c->get(RiwayatMasuk::class),
+            new HalamanPublik($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+        );
+    }
+
+    /** Halaman konfirmasi email baru dari tautan verifikasi (tanpa login). */
+    public static function verifikasiEmail(ContainerInterface $c, Pintu $pintu): VerifikasiEmailHandler
+    {
+        return new VerifikasiEmailHandler(
+            $c->get(DaftarUser::class),
+            $c->get(TokenUser::class),
+            $c->get(SuratUser::class),
+            $c->get(RiwayatAkun::class),
+            new HalamanPublik($c->get(TemplateRendererInterface::class), $pintu),
+            $pintu,
+            self::namaWebsite($c),
+        );
+    }
+
+    /** Nama website untuk subjek dan isi email: judul website, atau "Dapur AdeMS". */
+    public static function namaWebsite(ContainerInterface $c): string
+    {
+        $website = $c->get('config')['website'] ?? [];
+        $judul   = is_array($website) ? ($website['judul'] ?? null) : null;
+
+        return is_string($judul) && trim($judul) !== '' ? trim($judul) : 'Dapur AdeMS';
     }
 
     /** @return array<string, mixed> */
