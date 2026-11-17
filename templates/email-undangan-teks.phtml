@@ -1,0 +1,20 @@
+<?php
+/**
+ * Email undangan user baru (teks biasa).
+ *
+ * @var string $nama
+ * @var string $tautan
+ * @var string $pengundang
+ * @var string $namaWebsite
+ * @var int $jam
+ */
+?>
+Halo <?= $this->nama ?>,
+
+<?= $this->pengundang ?> mengundang Anda ke <?= $this->namaWebsite ?>. Buat kata sandi Anda lewat tautan berikut:
+
+<?= $this->tautan ?>
+
+
+Tautan berlaku <?= (int) $this->jam ?> jam dan hanya bisa dipakai sekali.
+Bila Anda tidak mengenal pengirim undangan ini, abaikan saja email ini.
