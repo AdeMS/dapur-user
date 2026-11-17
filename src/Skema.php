@@ -96,6 +96,20 @@ final class Skema
                 CONSTRAINT {$q("fk_{$a}user_riwayat_akun_sasaran")} FOREIGN KEY (sasaran_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
             ) {$opsi}",
+            $t->token() => "CREATE TABLE IF NOT EXISTS {$q($t->token())} (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT UNSIGNED NOT NULL,
+                jenis VARCHAR(30) NOT NULL,
+                hash CHAR(64) NOT NULL,
+                data VARCHAR(255) NOT NULL DEFAULT '',
+                kedaluwarsa DATETIME NOT NULL,
+                dipakai DATETIME NULL,
+                dibuat_pada DATETIME NOT NULL,
+                UNIQUE KEY {$q("uq_{$a}user_token_hash")} (hash),
+                KEY {$q("idx_{$a}user_token_user")} (user_id, jenis),
+                CONSTRAINT {$q("fk_{$a}user_token_user")} FOREIGN KEY (user_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
+            ) {$opsi}",
             $t->pengaturan() => "CREATE TABLE IF NOT EXISTS {$q($t->pengaturan())} (
                 user_id BIGINT UNSIGNED NOT NULL,
                 kunci VARCHAR(190) NOT NULL,
@@ -153,6 +167,16 @@ final class Skema
                 ip TEXT NOT NULL DEFAULT '',
                 perangkat TEXT NOT NULL DEFAULT '',
                 waktu TEXT NOT NULL
+            )",
+            $t->token() => "CREATE TABLE IF NOT EXISTS {$q($t->token())} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
+                jenis TEXT NOT NULL,
+                hash TEXT NOT NULL UNIQUE,
+                data TEXT NOT NULL DEFAULT '',
+                kedaluwarsa TEXT NOT NULL,
+                dipakai TEXT NULL,
+                dibuat_pada TEXT NOT NULL
             )",
             $t->pengaturan() => "CREATE TABLE IF NOT EXISTS {$q($t->pengaturan())} (
                 user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
