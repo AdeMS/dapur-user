@@ -1,0 +1,305 @@
+<?php
+/**
+ * Isi halaman Pengaturan & Privasi, dengan tiga tab:
+ * - Akun Saya: avatar, mengubah nama, serta tombol yang membuka popup Ubah email (bila email bisa dikirim) dan
+ *   Atur kata sandi baru;
+ * - Aktivitas: perubahan pada akun user dan perubahan yang ia lakukan pada akun lain;
+ * - Riwayat masuk.
+ *
+ * Tab bisa dibuka langsung lewat ?tab=akun|aktivitas|riwayat. Bila form di popup gagal dikirim, popup itu langsung
+ * terbuka lagi bersama pesannya.
+ *
+ * @var AdeMS\Dapur\User\User $user
+ * @var string|null $pesan        pesan berhasil
+ * @var string|null $galat        pesan kesalahan
+ * @var string|null $galatBagian  'nama', 'sandi', 'email', atau null (kesalahan umum)
+ * @var string $tab               tab yang terbuka
+ * @var string $nama              isian nama
+ * @var bool $bisaGantiEmail      email bisa diganti (pengiriman email aktif)
+ * @var string $emailBaru
+ * @var string $alamatPengaturan
+ * @var int $minimalSandi
+ * @var string $zonaWaktu
+ * @var list<array{waktu: string, peristiwa: string, label: string, keterangan: string, lingkup: string, user: string, oleh: string}> $aktivitas
+ * @var list<array{waktu: string, peristiwa: string, label: string, lingkup: string, ip: string, perangkat: string, perangkatLengkap: string}> $riwayat
+ * @var int|null $aktivitasLagi  jumlah untuk tombol "Tampilkan lebih banyak" di tab Aktivitas, null bila tidak ada lagi
+ * @var int|null $riwayatLagi    sama, untuk tab Riwayat masuk
+ * @var string $tokenCsrf
+ * @var string $fieldCsrf
+ */
+$warnaMasuk = [
+    'masuk'       => 'success',
+    'gagal'       => 'danger',
+    'keluar'      => 'secondary',
+    'ganti_sandi' => 'warning',
+];
+$warnaAkun = [
+    'buat_user'   => 'success',
+    'beri_akses'  => 'success',
+    'ubah_peran'  => 'info',
+    'ubah_nama'   => 'secondary',
+    'cabut_akses' => 'danger',
+    'aktifkan'    => 'success',
+    'nonaktifkan' => 'warning',
+    'undang'      => 'info',
+    'ubah_email'  => 'secondary',
+];
+$bisaEmail = $this->bisaGantiEmail ?? false;
+$riwayat   = $this->riwayat ?? [];
+$aktivitas = $this->aktivitas ?? [];
+$aksi      = $this->escapeHtmlAttr($this->alamatPengaturan);
+$tabs      = ['akun' => 'Akun Saya', 'aktivitas' => 'Aktivitas', 'riwayat' => 'Riwayat masuk'];
+$tab       = isset($tabs[$this->tab ?? '']) ? $this->tab : 'akun';
+$galatDi   = fn (string $bagian): bool => $this->galat && $this->galatBagian === $bagian;
+$popupBuka = $galatDi('sandi') ? 'sandi' : ($galatDi('email') && $bisaEmail ? 'email' : null);
+// Tombol "Tampilkan lebih banyak": muat ulang tab ini dengan lebih banyak baris, lalu lompat ke baris baru pertama.
+$tombolLagi = function (string $tab, ?int $jumlah, int $sekarang): string {
+    if ($jumlah === null) {
+        return '';
+    }
+    $alamat = $this->alamatPengaturan . '?tab=' . $tab . '&jumlah=' . $jumlah . '#' . $tab . '-' . $sekarang;
+
+    return '<div class="text-center mt-3"><a class="btn btn-outline-success" href="' . $this->escapeHtmlAttr($alamat)
+        . '"><i class="bi bi-chevron-double-down me-1"></i>Tampilkan lebih banyak</a></div>';
+};
+$csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) . '" value="'
+    . $this->escapeHtmlAttr($this->tokenCsrf) . '">';
+?>
+<style>
+    .user-pengaturan .nav-tabs .nav-link { white-space: nowrap; }
+    .user-pengaturan-avatar { width: 5rem; height: 5rem; font-size: 1.85rem; }
+    .user-pengaturan-label { font-weight: 600; }
+    /* Baris tujuan tombol "Tampilkan lebih banyak" tidak tertutup navbar */
+    .user-pengaturan tbody tr { scroll-margin-top: 6rem; }
+</style>
+<div class="container py-4 user-pengaturan">
+    <div class="card mb-4">
+        <div class="card-body py-3">
+            <h1 class="h4 mb-0">Pengaturan &amp; Privasi</h1>
+        </div>
+    </div>
+<?php if ($this->pesan) : ?>
+    <div class="alert alert-success alert-dismissible fade show user-pesan-sementara" role="status">
+        <?= $this->escapeHtml($this->pesan) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
+    </div>
+    <script>
+        // Pesan berhasil tertutup sendiri setelah 10 detik. Bootstrap dimuat di akhir halaman, jadi tunggu sampai
+        // halaman selesai dimuat.
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                document.querySelectorAll('.user-pesan-sementara').forEach((pesan) => bootstrap.Alert.getOrCreateInstance(pesan).close());
+            }, 10000);
+        });
+    </script>
+<?php endif ?>
+<?php if ($this->galat && $this->galatBagian === null) : ?>
+    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+    <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs flex-nowrap overflow-x-auto overflow-y-hidden" role="tablist">
+<?php foreach ($tabs as $kunci => $label) : ?>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link<?= $kunci === $tab ? ' active' : '' ?>" id="pengaturan-tab-<?= $kunci ?>" data-bs-toggle="tab" data-bs-target="#pengaturan-<?= $kunci ?>" data-tab="<?= $kunci ?>" type="button" role="tab" aria-controls="pengaturan-<?= $kunci ?>" aria-selected="<?= $kunci === $tab ? 'true' : 'false' ?>"><?= $this->escapeHtml($label) ?></button>
+                </li>
+<?php endforeach ?>
+            </ul>
+        </div>
+        <div class="card-body tab-content">
+            <div class="tab-pane fade<?= $tab === 'akun' ? ' show active' : '' ?>" id="pengaturan-akun" role="tabpanel" aria-labelledby="pengaturan-tab-akun" tabindex="0">
+                <h2 class="h5 mb-4">Akun Saya</h2>
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <span class="user-avatar user-pengaturan-avatar" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+                </div>
+<?php if ($galatDi('nama')) : ?>
+                <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                <form method="post" action="<?= $aksi ?>" id="pengaturan-form-nama">
+                    <?= $csrf ?>
+                    <input type="hidden" name="aksi" value="nama">
+                    <div class="mb-4 col-md-8 col-xl-6">
+                        <label class="form-label user-pengaturan-label" for="pengaturan-nama">Nama</label>
+                        <input class="form-control" id="pengaturan-nama" name="nama" type="text" maxlength="190" autocomplete="name" required value="<?= $this->escapeHtmlAttr($this->nama ?? $this->user->nama) ?>">
+                    </div>
+                </form>
+                <div class="mb-4 col-md-8 col-xl-6">
+                    <label class="form-label user-pengaturan-label" for="pengaturan-email">Email</label>
+                    <div class="d-flex gap-2">
+                        <input class="form-control" id="pengaturan-email" type="email" value="<?= $this->escapeHtmlAttr($this->user->email) ?>" readonly>
+<?php if ($bisaEmail) : ?>
+                        <button type="button" class="btn btn-outline-secondary text-nowrap" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-email">Ubah</button>
+<?php endif ?>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <div class="form-label user-pengaturan-label" id="pengaturan-label-sandi">Kata sandi</div>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-sandi" aria-describedby="pengaturan-label-sandi">Atur kata sandi baru</button>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="reset" form="pengaturan-form-nama" class="btn btn-outline-secondary">Batal</button>
+                    <button type="submit" form="pengaturan-form-nama" class="btn btn-success">Simpan</button>
+                </div>
+            </div>
+            <div class="tab-pane fade<?= $tab === 'aktivitas' ? ' show active' : '' ?>" id="pengaturan-aktivitas" role="tabpanel" aria-labelledby="pengaturan-tab-aktivitas" tabindex="0">
+                <h2 class="h5">Aktivitas</h2>
+                <p class="small text-body-secondary mb-3">Perubahan pada akun Anda dan perubahan yang Anda lakukan pada akun lain, waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+<?php if ($aktivitas === []) : ?>
+                <p class="mb-0">Belum ada aktivitas.</p>
+<?php else : ?>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Waktu</th>
+                                <th scope="col">Peristiwa</th>
+                                <th scope="col">User</th>
+                                <th scope="col">Keterangan</th>
+                                <th scope="col">Lingkup</th>
+                                <th scope="col">Oleh</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+<?php foreach ($aktivitas as $i => $a) : ?>
+                            <tr id="aktivitas-<?= (int) $i ?>">
+                                <td class="text-nowrap"><?= $this->escapeHtml($a['waktu']) ?></td>
+                                <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaAkun[$a['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($a['label']) ?></span></td>
+                                <td><?= $this->escapeHtml($a['user'] ?? 'Anda') ?></td>
+                                <td><?= $this->escapeHtml($a['keterangan']) ?></td>
+                                <td class="text-nowrap"><?= $this->escapeHtml($a['lingkup']) ?></td>
+                                <td class="text-nowrap"><?= $this->escapeHtml($a['oleh']) ?></td>
+                            </tr>
+<?php endforeach ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?= $tombolLagi('aktivitas', $this->aktivitasLagi ?? null, count($aktivitas)) ?>
+<?php endif ?>
+            </div>
+            <div class="tab-pane fade<?= $tab === 'riwayat' ? ' show active' : '' ?>" id="pengaturan-riwayat" role="tabpanel" aria-labelledby="pengaturan-tab-riwayat" tabindex="0">
+                <h2 class="h5">Riwayat masuk</h2>
+                <p class="small text-body-secondary mb-3"><?= count($riwayat) ?> catatan terakhir, waktu <?= $this->escapeHtml($this->zonaWaktu) ?>. Bila ada login yang tidak Anda kenali, segera ganti kata sandi.</p>
+<?php if ($riwayat === []) : ?>
+                <p class="mb-0">Belum ada riwayat masuk.</p>
+<?php else : ?>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Waktu</th>
+                                <th scope="col">Peristiwa</th>
+                                <th scope="col">Perangkat</th>
+                                <th scope="col">IP</th>
+                                <th scope="col">Lingkup</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+<?php foreach ($riwayat as $i => $b) : ?>
+                            <tr id="riwayat-<?= (int) $i ?>">
+                                <td class="text-nowrap"><?= $this->escapeHtml($b['waktu']) ?></td>
+                                <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaMasuk[$b['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($b['label']) ?></span></td>
+                                <td class="text-nowrap" title="<?= $this->escapeHtmlAttr($b['perangkatLengkap']) ?>"><?= $this->escapeHtml($b['perangkat']) ?></td>
+                                <td class="text-nowrap"><?= $this->escapeHtml($b['ip']) ?></td>
+                                <td class="text-nowrap"><?= $this->escapeHtml($b['lingkup']) ?></td>
+                            </tr>
+<?php endforeach ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?= $tombolLagi('riwayat', $this->riwayatLagi ?? null, count($riwayat)) ?>
+<?php endif ?>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="pengaturan-popup-sandi" tabindex="-1" aria-labelledby="pengaturan-popup-sandi-judul" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="post" action="<?= $aksi ?>" class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="pengaturan-popup-sandi-judul">Atur kata sandi baru</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+<?php if ($galatDi('sandi')) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <?= $csrf ?>
+                    <input type="hidden" name="aksi" value="sandi">
+                    <!-- Untuk pengelola kata sandi browser: akun mana yang kata sandinya diganti -->
+                    <input type="email" name="email" class="d-none" autocomplete="username" value="<?= $this->escapeHtmlAttr($this->user->email) ?>" readonly tabindex="-1" aria-hidden="true">
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-sandi-lama">Kata sandi sekarang</label>
+                        <input class="form-control" id="pengaturan-sandi-lama" name="sandi_lama" type="password" autocomplete="current-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-sandi-baru">Kata sandi baru</label>
+                        <input class="form-control" id="pengaturan-sandi-baru" name="sandi_baru" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required aria-describedby="pengaturan-sandi-syarat">
+                        <div class="form-text" id="pengaturan-sandi-syarat">Minimal <?= (int) $this->minimalSandi ?> karakter.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-sandi-ulang">Ulangi kata sandi baru</label>
+                        <input class="form-control" id="pengaturan-sandi-ulang" name="sandi_ulang" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required>
+                    </div>
+                    <p class="form-text mb-0">Setelah kata sandi diganti, perangkat lain yang sedang login akan dikeluarkan.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success">Simpan kata sandi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php if ($bisaEmail) : ?>
+    <div class="modal fade" id="pengaturan-popup-email" tabindex="-1" aria-labelledby="pengaturan-popup-email-judul" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="post" action="<?= $aksi ?>" class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="pengaturan-popup-email-judul">Ubah email</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+<?php if ($galatDi('email')) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <?= $csrf ?>
+                    <input type="hidden" name="aksi" value="email">
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-email-lama">Email sekarang</label>
+                        <input class="form-control" id="pengaturan-email-lama" type="email" value="<?= $this->escapeHtmlAttr($this->user->email) ?>" readonly disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-email-baru">Email baru</label>
+                        <input class="form-control" id="pengaturan-email-baru" name="email_baru" type="email" maxlength="190" autocomplete="email" required value="<?= $this->escapeHtmlAttr($this->emailBaru ?? '') ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-email-sandi">Kata sandi sekarang</label>
+                        <input class="form-control" id="pengaturan-email-sandi" name="sandi_sekarang" type="password" autocomplete="current-password" required>
+                    </div>
+                    <p class="form-text mb-0">Tautan konfirmasi dikirim ke email baru. Email akun berubah setelah tautan itu dibuka, dan email lama menerima pemberitahuan.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success">Kirim tautan konfirmasi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif ?>
+</div>
+<script>
+    // Tab yang dibuka ikut tercatat di alamat (?tab=...), agar tetap terbuka saat halaman dimuat ulang.
+    document.querySelectorAll('.user-pengaturan [data-tab]').forEach((tombol) => {
+        tombol.addEventListener('shown.bs.tab', () => {
+            const alamat = new URL(window.location.href);
+            alamat.searchParams.set('tab', tombol.dataset.tab);
+            history.replaceState(null, '', alamat);
+        });
+    });
+<?php if ($popupBuka !== null) : ?>
+    // Form di popup gagal dikirim: buka lagi popup itu bersama pesannya. Bootstrap dimuat di akhir halaman, jadi
+    // tunggu sampai halaman selesai dimuat.
+    document.addEventListener('DOMContentLoaded', () => {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('pengaturan-popup-<?= $popupBuka ?>')).show();
+    });
+<?php endif ?>
+</script>
