@@ -1,7 +1,8 @@
 # Dapur AdeMS User
 
 Modul user untuk [Dapur AdeMS](https://github.com/AdeMS/dapur): akun, kata sandi, login dan keluar, halaman profil,
-kelola user, hak akses dan peran per lingkup, pembatasan percobaan login, riwayat login, dan riwayat akun.
+kelola user, hak akses dan peran per lingkup, pembatasan percobaan login, riwayat login, riwayat akun, serta email
+undangan, lupa kata sandi, dan ganti email.
 
 Paket ini tidak membuat halaman sendiri. Modul yang memerlukan login, misalnya
 [adems/dapur-dashboard](https://github.com/AdeMS/dapur-dashboard), memasang halaman masuk, keluar, profil, dan
@@ -14,6 +15,8 @@ beberapa website.
 - MariaDB atau MySQL yang sudah diatur di `config/autoload/database.local.php` (SQLite juga bisa dipakai)
 - [adems/dapur-multiwebsite](https://github.com/AdeMS/dapur-multiwebsite) 1.1 atau lebih baru, bila user dipakai
   per website
+- [adems/dapur-email](https://github.com/AdeMS/dapur-email) 1.0 (ikut terpasang otomatis); fitur email aktif
+  setelah pengiriman email diatur
 
 ## Pemasangan
 
@@ -23,7 +26,7 @@ Paket ini biasanya ikut terpasang sebagai kebutuhan modul lain. Untuk memasangny
 ```json
 {
     "require": {
-        "adems/dapur-user": "^2.0"
+        "adems/dapur-user": "^2.1"
     }
 }
 ```
@@ -37,6 +40,25 @@ untuk anggota:
 vendor/bin/dapur-user pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
+
+### Memperbarui dari 2.0 ke 2.1
+
+Versi 2.1 menambah email undangan, lupa kata sandi, dan ganti email, beserta tabel `user_token`. Jalankan dari
+folder inti:
+
+```bash
+composer update
+vendor/bin/dapur-user pasang
+```
+
+lalu hapus cache konfigurasi. Paket [adems/dapur-email](https://github.com/AdeMS/dapur-email) ikut terpasang.
+Selama pengiriman email belum diatur, semuanya berjalan seperti 2.0: user baru mendapat kata sandi sementara, dan
+tautan "Lupa kata sandi?" tidak tampil. Untuk mengaktifkan email, ikuti [Email](#email).
+
+Ubah nama, ganti kata sandi, aktivitas, dan riwayat masuk pindah dari Profil ke halaman baru
+[Pengaturan & Privasi](#pengaturan--privasi); Profil kini hanya untuk dibaca.
+Modul yang memasang halaman user sendiri perlu menambah route untuk `PabrikLayanan::pengaturan()`; template yang
+menimpa `user::profil-isi` perlu disesuaikan.
 
 ### Memperbarui dari 1.x ke 2.0
 
@@ -93,6 +115,7 @@ return [
         'awalan_tabel' => 'xyz_', // awalan nama tabel, bawaan tanpa awalan
         'riwayat_hari' => 180,    // lama riwayat login disimpan; 0 = tidak pernah dihapus
         'zona_waktu'   => 'Asia/Jakarta', // zona waktu tampilan, bawaan zona waktu PHP
+        'alamat_website' => 'https://contoh.com', // alamat untuk tautan di email; bawaan dari request
     ],
 ];
 ```
@@ -106,6 +129,8 @@ return [
 | `user_percobaan_masuk` | `xyz_user_percobaan_masuk` | Login gagal 15 menit terakhir, untuk pembatasan |
 | `user_riwayat_masuk` | `xyz_user_riwayat_masuk` | Riwayat login |
 | `user_riwayat_akun` | `xyz_user_riwayat_akun` | Riwayat perubahan akun |
+| `user_pengaturan` | `xyz_user_pengaturan` | Pengaturan kecil per user |
+| `user_token` | `xyz_user_token` | Token sekali pakai untuk tautan email (hanya hash-nya) |
 
 Awalan hanya boleh berisi huruf, angka, dan garis bawah, paling panjang 32 karakter. Perintah `dapur-user`
 membaca pengaturan yang sama, jadi atur awalan sebelum menjalankan `pasang`.
@@ -143,13 +168,30 @@ di terminal; dari skrip, kata sandi tidak diubah.
 ## Profil
 
 Halaman profil berada di `<alamat dasar>/profil`, misalnya `/profil` di dashboard utama atau `/dashboard/profil`
-di dashboard website. Tautannya ada di submenu avatar. Di halaman ini user bisa:
+di dashboard website. Tautannya ada di submenu avatar. Halaman ini hanya untuk dibaca: kartu user (avatar, nama,
+email, peran, status) dengan tombol **Pengaturan akun**.
 
-- mengubah nama. Email dipakai untuk login dan belum bisa diubah.
-- mengganti kata sandi. Kata sandi sekarang wajib diisi, dan salah ketik dihitung seperti login gagal. Setelah
-  berhasil, session di perangkat lain berakhir, sedangkan perangkat yang dipakai tetap login.
-- melihat 20 catatan riwayat login terakhir, dengan perangkat yang diringkas (misalnya `Edge 157 · Windows`).
+## Pengaturan & Privasi
+
+Halaman `<alamat dasar>/pengaturan` (tautan "Pengaturan & Privasi" di submenu avatar) berisi tiga tab, yang bisa
+dibuka langsung lewat `?tab=akun|aktivitas|riwayat`:
+
+- **Akun Saya**: mengubah nama (tombol Simpan dan Batal), serta dua tombol yang membuka popup:
+  - **Ubah** di samping email, bila pengiriman email aktif (lihat [Email](#email));
+  - **Atur kata sandi baru**. Kata sandi sekarang wajib diisi, dan salah ketik dihitung seperti login gagal.
+    Setelah berhasil, session di perangkat lain berakhir, sedangkan perangkat yang dipakai tetap login.
+
+  Bila isian di popup salah, halaman dimuat ulang dengan popup itu terbuka bersama pesannya.
+- **Aktivitas**: 20 perubahan akun terakhir, baik perubahan pada akun user itu maupun perubahan yang ia lakukan
+  pada akun lain. Email admin yang mengubah akunnya tidak ditampilkan (cukup "Admin").
+- **Riwayat masuk**: 20 catatan login terakhir, dengan perangkat yang diringkas (misalnya `Edge 157 · Windows`).
   Teks user agent lengkap muncul saat kursor diarahkan ke nama perangkat.
+
+Aktivitas dan Riwayat masuk punya tombol **Tampilkan lebih banyak** bila masih ada catatan lain: setiap klik
+menambah 20 baris (`?tab=riwayat&jumlah=40`, dan seterusnya, paling banyak 480) dan melompat ke baris baru pertama.
+Catatan yang lebih lama bisa dilihat dengan perintah `riwayat` dan `riwayat-akun`.
+
+Tautan lama ke tab profil (`/profil?tab=sandi` dan sebagainya) dialihkan ke tab yang sesuai di halaman ini.
 
 ## Peran
 
@@ -176,8 +218,11 @@ Halaman kelola user berada di `<alamat dasar>/user`, misalnya `/user` di dashboa
 di dashboard website, dan hanya bisa dibuka admin. Di halaman ini admin bisa:
 
 - **menambah user.** Bila email sudah terdaftar, user itu cukup diberi akses ke lingkup ini. Bila belum, akunnya
-  dibuat dengan kata sandi sementara yang ditampilkan **sekali** kepada admin, misalnya `k7mq-x3vt-9wcr-hp4n`.
-  Admin menyampaikannya sendiri kepada user, lalu user menggantinya di halaman Profil.
+  dibuat, lalu:
+  - bila pengiriman email aktif, user menerima **undangan** berisi tautan untuk membuat kata sandinya sendiri;
+  - bila email mati atau undangan gagal terkirim, kata sandi sementara ditampilkan **sekali** kepada admin,
+    misalnya `k7mq-x3vt-9wcr-hp4n`. Admin menyampaikannya sendiri kepada user, lalu user menggantinya di Profil.
+- **mengirim ulang undangan** kepada user yang belum pernah login, misalnya karena tautannya sudah kedaluwarsa.
 - **mengubah peran**: antara admin super dan anggota di dashboard utama, atau antara admin web dan anggota di
   website.
 - **mencabut akses** dari lingkup ini. Akun user tidak dihapus, dan aksesnya ke lingkup lain tetap ada.
@@ -190,6 +235,38 @@ Admin tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya send
 tidak bisa diturunkan, dicabut, atau dinonaktifkan, agar Dapur tidak terkunci. Hanya user yang punya akses ke
 lingkup ini yang bisa diubah dari halamannya. Di website, admin super ikut terdaftar dengan keterangan "berlaku
 di semua website" dan hanya bisa diubah dari dashboard utama, jadi admin web tidak bisa mengubahnya.
+
+## Email
+
+Bila pengiriman email diatur di [adems/dapur-email](https://github.com/AdeMS/dapur-email#pengaturan) (`'cara' =>
+'smtp'`), tiga fitur ini aktif:
+
+| Fitur | Tautan berlaku | Keterangan |
+|---|---|---|
+| **Undangan** user baru | 48 jam | User membuat kata sandinya sendiri, jadi admin tidak pernah tahu kata sandinya |
+| **Lupa kata sandi** | 1 jam | Tautan "Lupa kata sandi?" di halaman masuk |
+| **Ubah email** di Profil | 24 jam | Tautan konfirmasi dikirim ke email baru; email lama menerima pemberitahuan |
+
+Halaman-halamannya berada di bawah alamat dasar pintu: `<alamat dasar>/lupa-sandi`, `/atur-sandi` (membuat kata
+sandi dari undangan atau lupa kata sandi), dan `/verifikasi-email`.
+
+Cara kerja tautan:
+
+- Token di tautan dibuat acak (32 byte). Database hanya menyimpan hash SHA-256-nya, jadi orang yang bisa membaca
+  database tidak bisa memakainya.
+- Setiap token hanya bisa dipakai sekali, punya batas waktu, dan token baru membatalkan token lama sejenis.
+- Membuka tautan hanya menampilkan formulir atau tombol konfirmasi. Token baru dipakai saat formulir dikirim, agar
+  pemindai tautan di aplikasi email (yang membuka tautan secara otomatis) tidak menghabiskannya.
+- Halaman lupa kata sandi selalu memberi jawaban yang sama, terdaftar atau tidak, agar orang lain tidak bisa
+  menebak email mana yang punya akun. Permintaannya dibatasi seperti login gagal.
+- Setelah kata sandi dibuat lewat tautan, semua session lama user itu berakhir.
+
+Tautan di email harus berisi alamat lengkap. Bawaannya diambil dari request yang sedang berjalan; dengan
+multi-website, hanya host yang terdaftar yang dilayani. Untuk memastikan tautan selalu menunjuk ke alamat yang
+benar, atur `'user' => ['alamat_website' => 'https://contoh.com']`.
+
+Email yang dikirim memakai template `user::email-undangan`, `user::email-lupa-sandi`, `user::email-verifikasi`,
+dan `user::email-pemberitahuan` (masing-masing dengan versi `-teks`), yang bisa ditimpa seperti template lain.
 
 ## Riwayat akun
 
@@ -231,13 +308,22 @@ $pintu = new Pintu('laporan', '/laporan');
 'laporan.masuk'       => PabrikLayanan::masuk($container, $pintu),
 'laporan.keluar'      => PabrikLayanan::keluar($container, $pintu),
 'laporan.profil'      => PabrikLayanan::profil($container, $pintu),
+'laporan.pengaturan'  => PabrikLayanan::pengaturan($container, $pintu),
 'laporan.user'        => PabrikLayanan::kelolaUser($container, $pintu),
+'laporan.lupa_sandi'  => PabrikLayanan::lupaSandi($container, $pintu),
+'laporan.atur_sandi'  => PabrikLayanan::aturSandi($container, $pintu),
+'laporan.verifikasi'  => PabrikLayanan::verifikasiEmail($container, $pintu),
 
 // Route:
 $app->route('/laporan/masuk', [MulaiSesiMiddleware::class, 'laporan.masuk'], ['GET', 'POST']);
 $app->post('/laporan/keluar', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.keluar']);
 $app->route('/laporan/profil', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.profil'], ['GET', 'POST']);
+$app->route('/laporan/pengaturan', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.pengaturan'], ['GET', 'POST']);
 $app->route('/laporan/user', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.user'], ['GET', 'POST']);
+// Halaman tautan email, tanpa login:
+$app->route('/laporan/lupa-sandi', [MulaiSesiMiddleware::class, 'laporan.lupa_sandi'], ['GET', 'POST']);
+$app->route('/laporan/atur-sandi', [MulaiSesiMiddleware::class, 'laporan.atur_sandi'], ['GET', 'POST']);
+$app->route('/laporan/verifikasi-email', [MulaiSesiMiddleware::class, 'laporan.verifikasi'], ['GET', 'POST']);
 $app->get('/laporan', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', LaporanHandler::class]);
 ```
 
@@ -245,9 +331,10 @@ Sertakan isi `AdeMS\Dapur\User\ConfigProvider` di ConfigProvider modul tersebut.
 sebagai atribut request `AdeMS\Dapur\User\User::class`.
 
 Template `user::menu-user` mengisi placeholder `menu-kanan` di navbar dengan avatar inisial user beserta
-submenu nama, email, Profil, dan tombol keluar. Template `user::masuk` adalah halaman login, dan `user::profil`
-adalah halaman profil yang berisi menu user serta `user::profil-isi`. Halaman kelola user tersusun dengan cara yang
-sama: `user::kelola-user` dan `user::kelola-user-isi`. Semuanya bisa ditimpa lewat
+submenu nama, email, Profil, Pengaturan & Privasi, dan tombol keluar. Template `user::masuk` adalah halaman login,
+dan `user::profil` adalah halaman profil yang berisi menu user serta `user::profil-isi`. Halaman Pengaturan &
+Privasi dan kelola user tersusun dengan cara yang sama: `user::pengaturan` + `user::pengaturan-isi`, dan
+`user::kelola-user` + `user::kelola-user-isi`. Semuanya bisa ditimpa lewat
 `'templates' => ['paths' => ['user' => [...]]]`.
 
 Agar halaman profil memakai menu modul sendiri, berikan penyaji halaman (kelas yang menerapkan
@@ -272,6 +359,7 @@ aktif dan nonaktif berlaku di semua lingkup.
 - Setelah login, user diarahkan kembali ke halaman yang diminta sebelumnya. Alamat itu disimpan di session,
   bukan di URL, dan hanya alamat di dalam pintu yang sama yang diterima.
 - Session disimpan di `data/cache/session/`, jadi folder `data/cache/` harus bisa ditulis web server.
+- Tautan email memakai token sekali pakai yang disimpan sebagai hash, dengan batas waktu (lihat [Email](#email)).
 
 ## Uji
 
