@@ -23,6 +23,8 @@ final class RiwayatAkun
     public const CABUT_AKSES = 'cabut_akses';
     public const AKTIFKAN    = 'aktifkan';
     public const NONAKTIFKAN = 'nonaktifkan';
+    public const UNDANG      = 'undang';
+    public const UBAH_EMAIL  = 'ubah_email';
 
     /** Label peristiwa untuk tampilan. */
     private const LABEL = [
@@ -33,6 +35,8 @@ final class RiwayatAkun
         self::CABUT_AKSES => 'Cabut akses',
         self::AKTIFKAN    => 'Aktifkan',
         self::NONAKTIFKAN => 'Nonaktifkan',
+        self::UNDANG      => 'Undang',
+        self::UBAH_EMAIL  => 'Ubah email',
     ];
 
     private const PANJANG_TEKS = 255;
@@ -89,6 +93,17 @@ final class RiwayatAkun
     public function untukUser(int $sasaranId, int $jumlah = 20): array
     {
         return $this->baca('r.sasaran_id = ?', [$sasaranId], $jumlah);
+    }
+
+    /**
+     * Aktivitas akun seorang user, terbaru lebih dulu: perubahan pada akunnya dan perubahan yang ia lakukan pada
+     * akun lain. Waktu dalam UTC.
+     *
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     */
+    public function aktivitasUser(int $userId, int $jumlah = 20): array
+    {
+        return $this->baca('(r.sasaran_id = ? OR r.pelaku_id = ?)', [$userId, $userId], $jumlah);
     }
 
     /**
