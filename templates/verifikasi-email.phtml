@@ -1,0 +1,41 @@
+<?php
+/**
+ * Konfirmasi email baru dari tautan verifikasi.
+ *
+ * @var bool $tidakBerlaku
+ * @var string|null $galat
+ * @var string $token
+ * @var string $emailBaru
+ * @var string $emailLama
+ * @var string $alamatVerifikasi
+ * @var string $alamatMasuk
+ * @var string $tokenCsrf
+ * @var string $fieldCsrf
+ */
+$this->headTitle('Konfirmasi email baru');
+?>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-9 col-md-6 col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h3 text-center mb-4">Konfirmasi email baru</h1>
+<?php if ($this->tidakBerlaku) : ?>
+                    <div class="alert alert-warning" role="status">Tautan ini salah, sudah pernah dipakai, atau sudah kedaluwarsa. Minta ulang dari halaman Pengaturan &amp; Privasi.</div>
+                    <p class="text-center mb-0"><a href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Halaman masuk</a></p>
+<?php else : ?>
+<?php if ($this->galat) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <p>Email akun akan diganti dari <strong><?= $this->escapeHtml($this->emailLama) ?></strong> menjadi <strong><?= $this->escapeHtml($this->emailBaru) ?></strong>. Setelah itu, masuk dengan email baru.</p>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatVerifikasi) ?>">
+                        <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
+                        <input type="hidden" name="token" value="<?= $this->escapeHtmlAttr($this->token) ?>">
+                        <button type="submit" class="btn btn-success w-100 fw-semibold">Ya, ganti email saya</button>
+                    </form>
+<?php endif ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
