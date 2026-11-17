@@ -1,6 +1,6 @@
 {
     "name": "adems/dapur-user",
-    "description": "Modul user untuk Dapur AdeMS: akun, login, hak akses, dan riwayat login",
+    "description": "Modul user untuk Dapur AdeMS: akun, login, hak akses, riwayat login, dan email undangan serta lupa kata sandi",
     "type": "library",
     "license": "BSD-3-Clause",
     "keywords": [
@@ -21,6 +21,7 @@
     "require": {
         "php": "~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0",
         "ext-session": "*",
+        "adems/dapur-email": "^1.0",
         "composer-runtime-api": "^2.0",
         "laminas/laminas-db": "^2.22",
         "laminas/laminas-diactoros": "^3.9",
