@@ -17,6 +17,7 @@
  * @var string $formEmail
  * @var string $formNama
  * @var string $formPeran
+ * @var bool $pakaiUndangan                 user baru menerima undangan lewat email
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
@@ -31,11 +32,17 @@ $warnaPeristiwa = [
     'cabut_akses' => 'danger',
     'aktifkan'    => 'success',
     'nonaktifkan' => 'warning',
+    'undang'      => 'info',
+    'ubah_email'  => 'secondary',
 ];
 ?>
 <div class="container py-4">
-    <h1 class="h3 mb-1">User</h1>
-    <p class="text-body-secondary mb-4">Akses ke <code><?= $this->escapeHtml($this->lingkup) ?></code></p>
+    <div class="card mb-4">
+        <div class="card-body py-3">
+            <h1 class="h4 mb-0">User</h1>
+            <p class="small text-body-secondary mb-0 mt-1">Akses ke <code><?= $this->escapeHtml($this->lingkup) ?></code></p>
+        </div>
+    </div>
 <?php if ($this->ditolak) : ?>
     <div class="alert alert-warning" role="alert">Halaman ini hanya untuk admin.</div>
 </div>
@@ -47,7 +54,19 @@ $warnaPeristiwa = [
 <?php return ?>
 <?php endif ?>
 <?php if ($this->pesan) : ?>
-    <div class="alert alert-success" role="status"><?= $this->escapeHtml($this->pesan) ?></div>
+    <div class="alert alert-success alert-dismissible fade show user-pesan-sementara" role="status">
+        <?= $this->escapeHtml($this->pesan) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
+    </div>
+    <script>
+        // Pesan berhasil tertutup sendiri setelah 10 detik. Bootstrap dimuat di akhir halaman, jadi tunggu sampai
+        // halaman selesai dimuat.
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                document.querySelectorAll('.user-pesan-sementara').forEach((pesan) => bootstrap.Alert.getOrCreateInstance(pesan).close());
+            }, 10000);
+        });
+    </script>
 <?php endif ?>
 <?php if ($this->galat) : ?>
     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
@@ -56,13 +75,13 @@ $warnaPeristiwa = [
     <div class="alert alert-warning" role="status">
         <div class="fw-semibold mb-1">User <?= $this->escapeHtml($this->sandiBaru['email']) ?> dibuat.</div>
         Kata sandi sementaranya: <code class="fs-5 user-sandi-sementara"><?= $this->escapeHtml($this->sandiBaru['sandi']) ?></code>
-        <div class="small mt-1">Kata sandi ini hanya ditampilkan sekali. Sampaikan kepada user tersebut, lalu minta ia menggantinya di halaman Profil setelah login.</div>
+        <div class="small mt-1">Kata sandi ini hanya ditampilkan sekali. Sampaikan kepada user tersebut, lalu minta ia menggantinya di halaman Pengaturan &amp; Privasi setelah login.</div>
     </div>
 <?php endif ?>
     <div class="card mb-4">
         <div class="card-body">
             <h2 class="h5 card-title">Tambah user</h2>
-            <p class="small text-body-secondary">Bila email sudah terdaftar, user itu cukup diberi akses ke sini. Bila belum, akunnya dibuat dengan kata sandi sementara.</p>
+            <p class="small text-body-secondary">Bila email sudah terdaftar, user itu cukup diberi akses ke sini. Bila belum, akunnya dibuat <?= ($this->pakaiUndangan ?? false) ? 'dan undangan dikirim ke email itu, berisi tautan untuk membuat kata sandinya sendiri.' : 'dengan kata sandi sementara.' ?></p>
             <form method="post" action="<?= $aksi ?>" class="row g-2 align-items-end">
                 <?= $csrf ?>
                 <input type="hidden" name="aksi" value="tambah">
@@ -139,6 +158,14 @@ $warnaPeristiwa = [
                                         <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
                                         <input type="hidden" name="nilai" value="<?= $u['aktif'] ? '0' : '1' ?>">
                                         <button type="submit" class="btn btn-sm btn-outline-warning"><?= $u['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
+                                    </form>
+<?php endif ?>
+<?php if ($u['bisaUndang'] ?? false) : ?>
+                                    <form method="post" action="<?= $aksi ?>">
+                                        <?= $csrf ?>
+                                        <input type="hidden" name="aksi" value="undang">
+                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-success">Kirim ulang undangan</button>
                                     </form>
 <?php endif ?>
 <?php if ($u['bisaCabut']) : ?>
