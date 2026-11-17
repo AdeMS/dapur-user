@@ -228,7 +228,7 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertTrue($baris['otomatis']);
         self::assertFalse($baris['bisaUbahPeran']);
         self::assertFalse($baris['bisaCabut']);
-        self::assertSame(['admin_web' => 'Admin web', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
+        self::assertSame(['admin_web' => 'Admin Web', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
 
         // Admin web tidak bisa mengubah atau mencabut admin super lewat ID.
         self::assertSame(404, $this->post(['aksi' => 'peran', 'user_id' => (string) $super, 'peran' => 'anggota'])->getStatusCode());
@@ -256,7 +256,7 @@ final class KelolaUserHandlerTest extends TestCase
         $this->pintu = $pintu;
 
         $this->get($super);
-        self::assertSame(['admin_super' => 'Admin super', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
+        self::assertSame(['admin_super' => 'Admin Super', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
 
         // Kedua dijadikan admin super, lalu boleh diturunkan lagi karena masih ada admin super lain.
         $this->post(['aksi' => 'peran', 'user_id' => (string) $kedua, 'peran' => 'admin_super'], true, sebagai: $super);
