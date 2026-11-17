@@ -55,10 +55,12 @@ final class MulaiSesiMiddleware implements MiddlewareInterface
             }
         }
 
-        return $response
+        $response = $response
             ->withHeader('X-Frame-Options', 'DENY')
-            ->withHeader('X-Content-Type-Options', 'nosniff')
-            ->withHeader('Referrer-Policy', 'same-origin');
+            ->withHeader('X-Content-Type-Options', 'nosniff');
+
+        // Halaman yang menetapkan aturannya sendiri (misalnya no-referrer di halaman bertoken) tidak ditimpa.
+        return $response->hasHeader('Referrer-Policy') ? $response : $response->withHeader('Referrer-Policy', 'same-origin');
     }
 
     private function siapkanFolder(): void
