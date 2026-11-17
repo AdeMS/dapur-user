@@ -65,9 +65,13 @@ final class RendererUji implements TemplateRendererInterface
     /** @var array<string, mixed> */
     public array $data = [];
 
+    /** Nama template terakhir. */
+    public string $template = '';
+
     public function render(string $name, $params = []): string
     {
-        $this->data = (array) $params;
+        $this->data     = (array) $params;
+        $this->template = $name;
 
         return $name;
     }
