@@ -15,7 +15,7 @@
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
-$this->headTitle($this->undangan ? 'Selamat datang' : 'Kata sandi baru');
+$this->headTitle($this->undangan ? 'Selamat Datang' : 'Kata Sandi Baru');
 ?>
 <div class="container py-5">
     <div class="row justify-content-center">
@@ -23,14 +23,14 @@ $this->headTitle($this->undangan ? 'Selamat datang' : 'Kata sandi baru');
             <div class="card shadow-sm">
                 <div class="card-body p-4">
 <?php if ($this->tidakBerlaku) : ?>
-                    <h1 class="h3 text-center mb-4">Tautan tidak berlaku</h1>
+                    <h1 class="h3 text-center mb-4">Tautan Tidak Berlaku</h1>
                     <div class="alert alert-warning" role="status">Tautan ini salah, sudah pernah dipakai, atau sudah kedaluwarsa.</div>
                     <p class="text-center mb-0">
                         <a href="<?= $this->escapeHtmlAttr($this->alamatLupa) ?>">Minta tautan baru</a> ·
                         <a href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Halaman masuk</a>
                     </p>
 <?php else : ?>
-                    <h1 class="h3 text-center mb-2"><?= $this->undangan ? 'Selamat datang, ' . $this->escapeHtml($this->nama) : 'Kata sandi baru' ?></h1>
+                    <h1 class="h3 text-center mb-2"><?= $this->undangan ? 'Selamat Datang, ' . $this->escapeHtml($this->nama) : 'Kata Sandi Baru' ?></h1>
                     <p class="text-center text-body-secondary mb-4"><?= $this->undangan ? 'Buat kata sandi untuk akun' : 'Buat kata sandi baru untuk' ?> <?= $this->escapeHtml($this->email) ?></p>
 <?php if ($this->galat) : ?>
                     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
