@@ -6,7 +6,7 @@ namespace AdeMS\Dapur\User;
 
 /**
  * Kata sandi awal untuk user yang dibuat admin dari browser. Ditampilkan sekali kepada admin, lalu user
- * menggantinya sendiri di halaman Profil.
+ * menggantinya sendiri di halaman Pengaturan & Privasi.
  *
  * Huruf yang mudah tertukar saat dibaca atau diketik (0/O, 1/l/I) tidak dipakai. Empat kelompok berisi
  * empat karakter, misalnya "k7mq-x3vt-9wcr-hp4n": 19 karakter, cukup untuk syarat admin.
