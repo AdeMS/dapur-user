@@ -1,13 +1,15 @@
 <?php
 /**
  * Menu user di navbar. Tidak menghasilkan keluaran di halaman: isinya dikirim ke placeholder 'menu-kanan'
- * pada layout Dapur (avatar inisial dengan submenu berisi avatar, nama, email, Profil, dan tombol keluar).
+ * pada layout Dapur (avatar inisial dengan submenu berisi avatar, nama, email, Profil, Pengaturan & Privasi, dan
+ * tombol keluar).
  *
  * Panggil dari template modul: $this->partial('user::menu-user', [...]).
  *
  * @var AdeMS\Dapur\User\User $user
  * @var string $alamatKeluar
  * @var string|null $alamatProfil  tautan Profil di submenu; tidak ditampilkan bila tidak diberikan
+ * @var string|null $alamatPengaturan  tautan Pengaturan & Privasi; tidak ditampilkan bila tidak diberikan
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
@@ -52,6 +54,11 @@
                                     <li><hr class="dropdown-divider"></li>
 <?php if ($this->alamatProfil ?? null) : ?>
                                     <li><a class="dropdown-item" href="<?= $this->escapeHtmlAttr($this->alamatProfil) ?>"><i class="bi bi-person-circle me-2"></i>Profil</a></li>
+<?php endif ?>
+<?php if ($this->alamatPengaturan ?? null) : ?>
+                                    <li><a class="dropdown-item" href="<?= $this->escapeHtmlAttr($this->alamatPengaturan) ?>"><i class="bi bi-gear me-2"></i>Pengaturan &amp; Privasi</a></li>
+<?php endif ?>
+<?php if (($this->alamatProfil ?? null) || ($this->alamatPengaturan ?? null)) : ?>
                                     <li><hr class="dropdown-divider"></li>
 <?php endif ?>
                                     <li>
