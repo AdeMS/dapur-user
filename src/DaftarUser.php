@@ -36,8 +36,8 @@ final class DaftarUser
 
     /** Label peran untuk tampilan. */
     private const LABEL = [
-        self::PERAN_ADMIN_SUPER => 'Admin super',
-        self::PERAN_ADMIN_WEB   => 'Admin web',
+        self::PERAN_ADMIN_SUPER => 'Admin Super',
+        self::PERAN_ADMIN_WEB   => 'Admin Web',
         self::PERAN_ANGGOTA     => 'Anggota',
     ];
 
@@ -77,6 +77,12 @@ final class DaftarUser
     public function gantiSandi(int $id, string $kataSandi): void
     {
         $this->jalankan("UPDATE {$this->tUser} SET kata_sandi = ? WHERE id = ?", [self::hash($kataSandi), $id]);
+    }
+
+    /** Mengganti email login. Pastikan lebih dulu email itu belum dipakai akun lain. */
+    public function gantiEmail(int $id, string $email): void
+    {
+        $this->jalankan("UPDATE {$this->tUser} SET email = ? WHERE id = ?", [self::normalkanEmail($email), $id]);
     }
 
     public function gantiNama(int $id, string $nama): void
