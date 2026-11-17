@@ -1,0 +1,19 @@
+<?php
+/**
+ * Pemberitahuan ke email lama (teks biasa).
+ *
+ * @var string $nama
+ * @var string $emailBaru
+ * @var bool $sudahDiganti
+ * @var string $namaWebsite
+ */
+?>
+Halo <?= $this->nama ?>,
+
+<?php if ($this->sudahDiganti) : ?>
+Email akun Anda di <?= $this->namaWebsite ?> sudah diganti menjadi <?= $this->emailBaru ?>. Mulai sekarang, masuk dengan email itu.
+<?php else : ?>
+Ada permintaan untuk mengganti email akun Anda di <?= $this->namaWebsite ?> menjadi <?= $this->emailBaru ?>. Email akun baru berubah setelah tautan konfirmasi di email baru dibuka.
+<?php endif ?>
+
+Bila bukan Anda yang melakukannya, segera ganti kata sandi Anda dan hubungi admin.
