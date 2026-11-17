@@ -22,6 +22,12 @@ final class Pengaturan
     /** Zona waktu untuk menampilkan waktu; database tetap menyimpan UTC. Bawaan: zona waktu PHP. */
     public readonly DateTimeZone $zonaWaktu;
 
+    /**
+     * Alamat website untuk tautan di email (undangan, lupa kata sandi), misalnya 'https://contoh.com'. Bila kosong,
+     * alamat diambil dari request yang sedang berjalan.
+     */
+    public readonly ?string $alamatWebsite;
+
     /** @param array<string, mixed> $config */
     public function __construct(array $config)
     {
@@ -34,6 +40,13 @@ final class Pengaturan
 
         $this->riwayatHari = $hari;
         $this->zonaWaktu   = self::zona($config['zona_waktu'] ?? null);
+
+        $alamat = $config['alamat_website'] ?? null;
+        if ($alamat !== null && (! is_string($alamat) || preg_match('#^https?://[a-z0-9.-]+(:\d+)?/?$#i', $alamat) !== 1)) {
+            throw new RuntimeException("Pengaturan 'alamat_website' user tidak sah; contoh: 'https://contoh.com'.");
+        }
+
+        $this->alamatWebsite = $alamat === null ? null : rtrim($alamat, '/');
     }
 
     private static function zona(mixed $nama): DateTimeZone
