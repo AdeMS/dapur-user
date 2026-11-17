@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User;
 
+use AdeMS\Dapur\Email\ConfigProvider as EmailConfigProvider;
+
 /**
  * Layanan user: data user dan hak akses, login, pembatasan percobaan, riwayat login, dan session.
  *
@@ -20,20 +22,26 @@ final class ConfigProvider
     /** @return array<string, mixed> */
     public function __invoke(): array
     {
+        // Layanan email (adems/dapur-email) ikut dimuat, agar modul yang memakai paket ini tidak perlu
+        // mencantumkannya sendiri.
+        $email = (new EmailConfigProvider())();
+
         return [
             'templates'    => [
-                'paths' => [
+                'paths' => $email['templates']['paths'] + [
                     'user' => [dirname(__DIR__) . '/templates'],
                 ],
             ],
             'dependencies' => [
-                'factories' => array_fill_keys([
+                'factories' => $email['dependencies']['factories'] + array_fill_keys([
                     Pengaturan::class,
                     DaftarUser::class,
                     PembatasPercobaan::class,
                     RiwayatMasuk::class,
                     RiwayatAkun::class,
                     PengaturanUser::class,
+                    TokenUser::class,
+                    SuratUser::class,
                     Autentikasi::class,
                     Middleware\MulaiSesiMiddleware::class,
                 ], PabrikLayanan::class),
