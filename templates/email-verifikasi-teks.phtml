@@ -1,0 +1,20 @@
+<?php
+/**
+ * Email verifikasi email baru (teks biasa).
+ *
+ * @var string $nama
+ * @var string $emailBaru
+ * @var string $tautan
+ * @var string $namaWebsite
+ * @var int $jam
+ */
+?>
+Halo <?= $this->nama ?>,
+
+Anda meminta agar email akun Anda di <?= $this->namaWebsite ?> diganti menjadi <?= $this->emailBaru ?>. Konfirmasi lewat tautan berikut:
+
+<?= $this->tautan ?>
+
+
+Tautan berlaku <?= (int) $this->jam ?> jam dan hanya bisa dipakai sekali.
+Bila bukan Anda yang memintanya, abaikan email ini. Email akun tidak berubah.
