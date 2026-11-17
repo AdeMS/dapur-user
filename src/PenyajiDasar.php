@@ -35,6 +35,7 @@ final class PenyajiDasar implements PenyajiHalaman
             'user'         => $request->getAttribute(User::class),
             'alamatKeluar' => $this->pintu->alamatKeluar(),
             'alamatProfil' => $this->pintu->alamatProfil(),
+            'alamatPengaturan' => $this->pintu->alamatPengaturan(),
             'tokenCsrf'    => (new TokenCsrf($sesi))->token(),
             'fieldCsrf'    => TokenCsrf::FIELD,
         ]), $status);
