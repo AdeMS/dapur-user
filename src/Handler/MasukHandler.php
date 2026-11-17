@@ -9,6 +9,7 @@ use AdeMS\Dapur\User\HasilMasuk;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\Pintu;
 use AdeMS\Dapur\User\Sesi;
+use AdeMS\Dapur\User\SuratUser;
 use AdeMS\Dapur\User\TokenCsrf;
 use Laminas\Diactoros\Response\HtmlResponse;
 use Laminas\Diactoros\Response\RedirectResponse;
@@ -26,6 +27,7 @@ final class MasukHandler implements RequestHandlerInterface
         private readonly Autentikasi $autentikasi,
         private readonly TemplateRendererInterface $renderer,
         private readonly Pintu $pintu,
+        private readonly ?SuratUser $surat = null,
     ) {
     }
 
@@ -35,9 +37,15 @@ final class MasukHandler implements RequestHandlerInterface
         assert($sesi instanceof Sesi);
 
         if ($request->getMethod() !== 'POST') {
-            return $sesi->ambil(WajibMasukMiddleware::SESI_USER) !== null
-                ? new RedirectResponse($this->pintu->rute())
-                : $this->halaman($sesi, null, '');
+            if ($sesi->ambil(WajibMasukMiddleware::SESI_USER) !== null) {
+                return new RedirectResponse($this->pintu->rute());
+            }
+
+            // Pesan dari halaman lain, misalnya setelah kata sandi dibuat lewat tautan email.
+            $info = $sesi->ambil(ProfilHandler::SESI_PESAN);
+            $sesi->hapus(ProfilHandler::SESI_PESAN);
+
+            return $this->halaman($sesi, null, '', 200, is_string($info) ? $info : null);
         }
 
         $isi   = (array) $request->getParsedBody();
@@ -76,11 +84,14 @@ final class MasukHandler implements RequestHandlerInterface
         return new RedirectResponse($this->pintu->tujuanSah($tujuan) ? $tujuan : $this->pintu->rute());
     }
 
-    private function halaman(Sesi $sesi, ?string $pesan, string $email, int $status = 200): ResponseInterface
+    private function halaman(Sesi $sesi, ?string $pesan, string $email, int $status = 200, ?string $info = null): ResponseInterface
     {
         return new HtmlResponse($this->renderer->render(self::TEMPLATE, [
             'layout'      => $this->pintu->layout,
             'pesan'       => $pesan,
+            'info'        => $info,
+            // Tautan lupa kata sandi hanya tampil bila email bisa dikirim.
+            'alamatLupa'  => $this->surat?->aktif() ? $this->pintu->alamatLupaSandi() : null,
             'email'       => $email,
             'alamatMasuk' => $this->pintu->alamatMasuk(),
             'tokenCsrf'   => (new TokenCsrf($sesi))->token(),
