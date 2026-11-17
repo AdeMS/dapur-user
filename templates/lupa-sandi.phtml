@@ -1,0 +1,46 @@
+<?php
+/**
+ * Halaman lupa kata sandi: user mengisi email untuk menerima tautan membuat kata sandi baru.
+ *
+ * @var bool $tidakTersedia   pengiriman email belum diaktifkan
+ * @var bool $terkirim        permintaan sudah diproses (pesan sama, terdaftar atau tidak)
+ * @var string|null $galat
+ * @var string $email
+ * @var string $alamatLupa
+ * @var string $alamatMasuk
+ * @var string $pesanTerkirim
+ * @var string $tokenCsrf
+ * @var string $fieldCsrf
+ */
+$this->headTitle('Lupa kata sandi');
+?>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-9 col-md-6 col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <h1 class="h3 text-center mb-4">Lupa kata sandi</h1>
+<?php if ($this->tidakTersedia) : ?>
+                    <div class="alert alert-info" role="status">Fitur ini belum tersedia. Hubungi admin untuk mengatur ulang kata sandi Anda.</div>
+<?php elseif ($this->terkirim) : ?>
+                    <div class="alert alert-success" role="status"><?= $this->escapeHtml($this->pesanTerkirim) ?></div>
+<?php else : ?>
+<?php if ($this->galat) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <p class="text-body-secondary">Masukkan email akun Anda. Kami akan mengirim tautan untuk membuat kata sandi baru.</p>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatLupa) ?>">
+                        <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
+                        <div class="mb-3">
+                            <label class="form-label" for="email">Email</label>
+                            <input class="form-control" id="email" name="email" type="email" maxlength="190" autocomplete="username" required autofocus value="<?= $this->escapeHtmlAttr($this->email) ?>">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-semibold">Kirim tautan</button>
+                    </form>
+<?php endif ?>
+                    <p class="text-center mt-3 mb-0"><a href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Kembali ke halaman masuk</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
