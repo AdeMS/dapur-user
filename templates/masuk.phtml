@@ -2,7 +2,9 @@
 /**
  * Halaman login.
  *
- * @var string|null $pesan
+ * @var string|null $pesan       pesan kesalahan
+ * @var string|null $info        pesan berhasil, misalnya setelah kata sandi dibuat
+ * @var string|null $alamatLupa  halaman lupa kata sandi, atau null bila email tidak aktif
  * @var string|null $email
  * @var string $alamatMasuk
  * @var string $tokenCsrf
@@ -65,21 +67,31 @@ $this->headTitle('Masuk');
                 </span>
                 <span class="visually-hidden">Masuk</span>
             </h1>
-<?php if ($this->pesan) : ?>
-            <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->pesan) ?></div>
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+<?php if ($this->info ?? null) : ?>
+                    <div class="alert alert-success" role="status"><?= $this->escapeHtml($this->info) ?></div>
 <?php endif ?>
-            <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">
-                <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
-                <div class="mb-3">
-                    <label class="form-label" for="email">Email</label>
-                    <input class="form-control" id="email" name="email" type="email" autocomplete="username" required autofocus value="<?= $this->escapeHtmlAttr((string) $this->email) ?>">
+<?php if ($this->pesan) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->pesan) ?></div>
+<?php endif ?>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">
+                        <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="email">Email</label>
+                            <input class="form-control" id="email" name="email" type="email" autocomplete="username" required autofocus value="<?= $this->escapeHtmlAttr((string) $this->email) ?>">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="kata_sandi">Kata Sandi</label>
+                            <input class="form-control" id="kata_sandi" name="kata_sandi" type="password" autocomplete="current-password" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-semibold">Masuk</button>
+                    </form>
+<?php if ($this->alamatLupa ?? null) : ?>
+                    <p class="text-center mt-3 mb-0"><a href="<?= $this->escapeHtmlAttr($this->alamatLupa) ?>">Lupa kata sandi?</a></p>
+<?php endif ?>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label" for="kata_sandi">Kata sandi</label>
-                    <input class="form-control" id="kata_sandi" name="kata_sandi" type="password" autocomplete="current-password" required>
-                </div>
-                <button type="submit" class="btn btn-success w-100">Masuk</button>
-            </form>
+            </div>
         </div>
     </div>
 </div>
