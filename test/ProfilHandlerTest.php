@@ -48,7 +48,7 @@ final class ProfilHandlerTest extends TestCase
         $this->daftar->tambahAkses($this->id, 'dashboard');
     }
 
-    private function handler(): ProfilHandler
+    private function handler(string $jenis = ProfilHandler::HALAMAN_PROFIL): ProfilHandler
     {
         return new ProfilHandler(
             $this->daftar,
@@ -57,9 +57,15 @@ final class ProfilHandlerTest extends TestCase
             new PenyajiDasar($this->renderer, $this->pintu),
             $this->pintu,
             new DateTimeZone('Asia/Jakarta'),
-            ProfilHandler::TEMPLATE,
+            $jenis === ProfilHandler::HALAMAN_PROFIL ? ProfilHandler::TEMPLATE : ProfilHandler::TEMPLATE_PENGATURAN,
             new RiwayatAkun($this->db),
+            jenis: $jenis,
         );
+    }
+
+    private function pengaturan(): ProfilHandler
+    {
+        return $this->handler(ProfilHandler::HALAMAN_PENGATURAN);
     }
 
     private function user(): User
@@ -70,10 +76,12 @@ final class ProfilHandlerTest extends TestCase
         return $user;
     }
 
-    private function get(): ResponseInterface
+    /** @param array<string, string> $query */
+    private function get(string $jenis = ProfilHandler::HALAMAN_PROFIL, array $query = []): ResponseInterface
     {
-        return $this->handler()->handle(
-            (new ServerRequest([], [], '/dashboard/profil', 'GET'))
+        return $this->handler($jenis)->handle(
+            (new ServerRequest([], [], '/dashboard/' . $jenis, 'GET'))
+                ->withQueryParams($query)
                 ->withAttribute(Sesi::class, $this->sesi)
                 ->withAttribute(User::class, $this->user()),
         );
@@ -86,8 +94,11 @@ final class ProfilHandlerTest extends TestCase
             $isi[TokenCsrf::FIELD] = (new TokenCsrf($this->sesi))->token();
         }
 
-        return $this->handler()->handle(
-            (new ServerRequest(['REMOTE_ADDR' => '192.0.2.1'], [], '/dashboard/profil', 'POST', 'php://memory', ['User-Agent' => 'Browser Uji']))
+        // Semua form ada di halaman Pengaturan & Privasi; halaman Profil hanya untuk dibaca.
+        $jenis = ProfilHandler::HALAMAN_PENGATURAN;
+
+        return $this->handler($jenis)->handle(
+            (new ServerRequest(['REMOTE_ADDR' => '192.0.2.1'], [], '/dashboard/' . $jenis, 'POST', 'php://memory', ['User-Agent' => 'Browser Uji']))
                 ->withParsedBody($isi)
                 ->withAttribute(Sesi::class, $this->sesi)
                 ->withAttribute(User::class, $this->user()),
@@ -106,12 +117,15 @@ final class ProfilHandlerTest extends TestCase
             [$this->id, 'dashboard', 'masuk', '192.0.2.1', 'Mozilla/5.0 (Windows NT 10.0) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0', '2026-11-12 06:44:32'],
         );
 
-        $response = $this->get();
+        $response = $this->get(ProfilHandler::HALAMAN_PENGATURAN);
         $data     = $this->renderer->data;
 
         self::assertSame(200, $response->getStatusCode());
+        self::assertSame(ProfilHandler::TEMPLATE_PENGATURAN, $this->renderer->template);
         self::assertSame('layout::uji', $data['layout']);
         self::assertSame('/dashboard/profil', $data['alamatProfil']);
+        self::assertSame('/dashboard/pengaturan', $data['alamatPengaturan']);
+        self::assertSame('akun', $data['tab']);
         self::assertSame('/dashboard/keluar', $data['alamatKeluar']);
         self::assertSame('Admin', $data['nama']);
         self::assertSame(12, $data['minimalSandi']);
@@ -125,7 +139,7 @@ final class ProfilHandlerTest extends TestCase
     {
         $response = $this->post(['aksi' => 'nama', 'nama' => '  Ade M Saragih  ']);
 
-        self::assertSame('/dashboard/profil', $response->getHeaderLine('Location'));
+        self::assertSame('/dashboard/pengaturan?tab=akun', $response->getHeaderLine('Location'));
         self::assertSame('Ade M Saragih', $this->user()->nama);
 
         $akun = (new RiwayatAkun($this->db))->untukUser($this->id);
@@ -165,7 +179,7 @@ final class ProfilHandlerTest extends TestCase
         $response = $this->gantiSandi();
         $user     = $this->user();
 
-        self::assertSame('/dashboard/profil', $response->getHeaderLine('Location'));
+        self::assertSame('/dashboard/pengaturan?tab=akun', $response->getHeaderLine('Location'));
         self::assertTrue(password_verify(self::BARU, $user->kataSandi));
         self::assertSame($user->sidikSandi(), $this->sesi->ambil(WajibMasukMiddleware::SESI_SANDI));
         self::assertNotSame($sidikLama, $user->sidikSandi());
@@ -228,6 +242,113 @@ final class ProfilHandlerTest extends TestCase
     {
         self::assertSame(422, $this->gantiSandi(ulang: 'lain-sama-sekali-panjang')->getStatusCode());
         self::assertTrue(password_verify(self::SANDI, $this->user()->kataSandi));
+    }
+
+    public function testTabPeranStatusDanAktivitas(): void
+    {
+        $lain = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
+        $akun = new RiwayatAkun($this->db);
+        $akun->catat(RiwayatAkun::BERI_AKSES, $lain, $this->id, 'dashboard', 'peran anggota', '192.0.2.9', 'Browser');
+        $akun->catat(RiwayatAkun::UBAH_NAMA, $this->id, $this->id, 'dashboard', 'A → B', '192.0.2.1', 'Browser');
+        $akun->catat(RiwayatAkun::BUAT_USER, null, $this->id, 'dashboard', 'Admin', '', 'terminal');
+        // Perubahan yang dilakukan user ini pada akun lain ikut tampil; yang tidak melibatkannya tidak.
+        $citra = $this->daftar->buat('citra@contoh.com', 'Citra', self::SANDI);
+        $akun->catat(RiwayatAkun::UBAH_PERAN, $this->id, $lain, 'dashboard', 'anggota → admin_super', '192.0.2.1', 'Browser');
+        $akun->catat(RiwayatAkun::BUAT_USER, $lain, $citra, 'dashboard', 'Citra', '192.0.2.9', 'Browser');
+
+        $this->handler()->handle(
+            (new ServerRequest([], [], '/dashboard/profil', 'GET'))
+                ->withAttribute(Sesi::class, $this->sesi)
+                ->withAttribute(User::class, $this->user())
+                ->withAttribute(WajibMasukMiddleware::ATRIBUT_PERAN, DaftarUser::PERAN_ADMIN_SUPER),
+        );
+        $data = $this->renderer->data;
+
+        self::assertSame(ProfilHandler::TEMPLATE, $this->renderer->template);
+        self::assertSame([], $data['riwayat'], 'Profil tidak memuat riwayat masuk.');
+        self::assertSame([], $data['aktivitas'], 'Profil tidak memuat aktivitas.');
+        self::assertSame('/dashboard/pengaturan', $data['alamatPengaturan']);
+        self::assertSame(['nilai' => 'admin_super', 'label' => DaftarUser::label('admin_super')], $data['peran']);
+        self::assertTrue($data['aktif']);
+        self::assertSame('/dashboard', $data['alamatBeranda']);
+
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'aktivitas']);
+        $data = $this->renderer->data;
+        self::assertSame('aktivitas', $data['tab']);
+        // Email admin lain tidak ditampilkan: cukup "Admin".
+        self::assertCount(4, $data['aktivitas']);
+        self::assertEqualsCanonicalizing(['Admin', 'Anda', 'Anda', 'Terminal'], array_column($data['aktivitas'], 'oleh'));
+        self::assertEqualsCanonicalizing(['Anda', 'Anda', 'Anda', 'super@contoh.com'], array_column($data['aktivitas'], 'user'));
+
+    }
+
+    public function testTabTakDikenalDanGalatMembukaTabnya(): void
+    {
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => '<x>']);
+        self::assertSame('akun', $this->renderer->data['tab']);
+        self::assertNull($this->renderer->data['peran']);
+
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'riwayat']);
+        self::assertSame('riwayat', $this->renderer->data['tab']);
+
+        // Form di popup gagal: tab Akun Saya terbuka, popup dibuka template menurut galatBagian.
+        $this->post(['aksi' => 'email', 'email_baru' => 'x@contoh.com', 'sandi_sekarang' => 'salah']);
+        self::assertSame('akun', $this->renderer->data['tab']);
+        self::assertSame('email', $this->renderer->data['galatBagian']);
+    }
+
+    public function testTampilkanLebihBanyak(): void
+    {
+        for ($i = 0; $i < 25; $i++) {
+            $this->riwayat->catat(RiwayatMasuk::MASUK, $this->id, 'dashboard', '192.0.2.1', 'Browser');
+        }
+
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'riwayat']);
+        self::assertCount(20, $this->renderer->data['riwayat']);
+        self::assertSame(40, $this->renderer->data['riwayatLagi']);
+        self::assertNull($this->renderer->data['aktivitasLagi']);
+
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'riwayat', 'jumlah' => '40']);
+        self::assertCount(25, $this->renderer->data['riwayat']);
+        self::assertNull($this->renderer->data['riwayatLagi']);
+
+        // Jumlah hanya berlaku untuk tab yang terbuka, dan nilai aneh kembali ke bawaan.
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'aktivitas', 'jumlah' => '40']);
+        self::assertCount(20, $this->renderer->data['riwayat']);
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'riwayat', 'jumlah' => '-5']);
+        self::assertCount(20, $this->renderer->data['riwayat']);
+        $this->get(ProfilHandler::HALAMAN_PENGATURAN, ['tab' => 'riwayat', 'jumlah' => '99999']);
+        self::assertCount(25, $this->renderer->data['riwayat']);
+    }
+
+    public function testTautanLamaKeTabProfilDialihkanKePengaturan(): void
+    {
+        $this->sesi->simpan(ProfilHandler::SESI_PESAN, 'Pesan lama');
+
+        $response = $this->get(ProfilHandler::HALAMAN_PROFIL, ['tab' => 'riwayat']);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/dashboard/pengaturan?tab=riwayat', $response->getHeaderLine('Location'));
+        self::assertSame('/dashboard/pengaturan?tab=akun', $this->get(ProfilHandler::HALAMAN_PROFIL, ['tab' => 'sandi'])->getHeaderLine('Location'));
+        self::assertSame('Pesan lama', $this->sesi->ambil(ProfilHandler::SESI_PESAN), 'Pesan tetap tampil di halaman tujuan.');
+
+        self::assertSame(200, $this->get(ProfilHandler::HALAMAN_PROFIL, ['tab' => '<x>'])->getStatusCode());
+    }
+
+    public function testHalamanProfilHanyaUntukDibaca(): void
+    {
+        $isi = ['aksi' => 'nama', 'nama' => 'Nama Lain'];
+        $isi[TokenCsrf::FIELD] = (new TokenCsrf($this->sesi))->token();
+
+        $response = $this->handler()->handle(
+            (new ServerRequest(['REMOTE_ADDR' => '192.0.2.1'], [], '/dashboard/profil', 'POST'))
+                ->withParsedBody($isi)
+                ->withAttribute(Sesi::class, $this->sesi)
+                ->withAttribute(User::class, $this->user()),
+        );
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertSame('Admin', $this->user()->nama);
     }
 
     public function testNamaSamaTidakDicatat(): void
