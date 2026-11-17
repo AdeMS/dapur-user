@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User\Handler;
 
+use AdeMS\Dapur\Email\GagalKirim;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\KataSandiSementara;
 use AdeMS\Dapur\User\Konteks;
@@ -13,7 +14,9 @@ use AdeMS\Dapur\User\Perangkat;
 use AdeMS\Dapur\User\Pintu;
 use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\Sesi;
+use AdeMS\Dapur\User\SuratUser;
 use AdeMS\Dapur\User\TokenCsrf;
+use AdeMS\Dapur\User\TokenUser;
 use AdeMS\Dapur\User\User;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -31,6 +34,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin super terakhir
  * tidak bisa diturunkan atau dicabut, agar Dapur tidak terkunci. Di website, admin super tampil sebagai admin
  * otomatis dan hanya bisa diubah dari dashboard utama. Semua perubahan dicatat di riwayat akun.
+ *
+ * Bila email bisa dikirim, user baru menerima undangan berisi tautan untuk membuat kata sandinya sendiri, dan
+ * undangan bisa dikirim ulang selama user itu belum pernah login. Bila email mati atau gagal terkirim, kata sandi
+ * sementara ditampilkan sekali kepada admin seperti sebelumnya.
  */
 final class KelolaUserHandler implements RequestHandlerInterface
 {
@@ -52,6 +59,9 @@ final class KelolaUserHandler implements RequestHandlerInterface
         private readonly DateTimeZone $zonaWaktu,
         private readonly bool $kelolaAkun = false,
         private readonly string $template = self::TEMPLATE,
+        private readonly ?TokenUser $token = null,
+        private readonly ?SuratUser $surat = null,
+        private readonly string $namaWebsite = 'Dapur AdeMS',
     ) {
     }
 
@@ -98,6 +108,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'peran'  => $this->ubahPeran($request, $user, $sesi, $isi),
             'cabut'  => $this->cabut($request, $user, $sesi, $isi),
             'aktif'  => $this->aturAktif($request, $user, $sesi, $isi),
+            'undang' => $this->undangUlang($request, $user, $sesi, $isi),
             default  => $this->galat($request, $user, 'Permintaan tidak dikenal.', 400),
         };
     }
@@ -156,6 +167,18 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $this->daftar->tambahAkses($id, $this->pintu->lingkup, $peran);
         $this->catat($request, RiwayatAkun::BUAT_USER, $admin, $id, $nama);
         $this->catat($request, RiwayatAkun::BERI_AKSES, $admin, $id, "peran {$peran}");
+
+        $baru = $this->daftar->cariId($id);
+        if ($baru !== null && $this->bisaUndang()) {
+            $gagal = $this->kirimUndangan($request, $admin, $baru);
+            if ($gagal === null) {
+                $sesi->simpan(ProfilHandler::SESI_PESAN, "Undangan sudah dikirim ke {$email}. Tautan di dalamnya berlaku 48 jam.");
+
+                return new RedirectResponse($this->pintu->alamatKelolaUser());
+            }
+
+            $sesi->simpan(ProfilHandler::SESI_PESAN, "Undangan gagal dikirim ({$gagal}). Berikan kata sandi sementara di bawah ini.");
+        }
 
         $sesi->simpan(self::SESI_SANDI_BARU, ['email' => $email, 'sandi' => $sandi]);
 
@@ -255,6 +278,64 @@ final class KelolaUserHandler implements RequestHandlerInterface
     }
 
     /**
+     * Mengirim ulang undangan kepada user yang belum pernah login, misalnya karena tautan lama sudah kedaluwarsa.
+     *
+     * @param array<mixed> $isi
+     */
+    private function undangUlang(ServerRequestInterface $request, User $admin, Sesi $sesi, array $isi): ResponseInterface
+    {
+        if (! $this->bisaUndang()) {
+            return $this->galat($request, $admin, 'Undangan tidak bisa dikirim karena pengiriman email belum diaktifkan.', 503);
+        }
+
+        $sasaran = $this->sasaran($isi);
+        if ($sasaran === null) {
+            return $this->galat($request, $admin, 'User tidak ditemukan di sini.', 404);
+        }
+
+        [$target] = $sasaran;
+        $baris    = array_values(array_filter($this->daftar->userDiLingkup($this->pintu->lingkup), static fn (array $u): bool => $u['id'] === $target->id));
+        if ($target->id === $admin->id || ! $target->aktif || ($baris[0]['terakhir_masuk'] ?? null) !== null) {
+            return $this->galat($request, $admin, 'Undangan hanya untuk user aktif yang belum pernah login.', 422);
+        }
+
+        $gagal = $this->kirimUndangan($request, $admin, $target);
+        if ($gagal !== null) {
+            return $this->galat($request, $admin, "Undangan gagal dikirim: {$gagal}", 502);
+        }
+
+        $sesi->simpan(ProfilHandler::SESI_PESAN, "Undangan dikirim ulang ke {$target->email}.");
+
+        return new RedirectResponse($this->pintu->alamatKelolaUser());
+    }
+
+    /** @return string|null pesan kegagalan, atau null bila undangan terkirim */
+    private function kirimUndangan(ServerRequestInterface $request, User $admin, User $user): ?string
+    {
+        assert($this->token !== null && $this->surat !== null);
+        $token = $this->token->buat($user->id, TokenUser::UNDANGAN);
+        try {
+            $this->surat->kirimUndangan(
+                $user,
+                $this->surat->alamatLengkap($request, $this->pintu->alamatAturSandi(), ['token' => $token]),
+                $admin->nama,
+                $this->namaWebsite,
+            );
+        } catch (GagalKirim $e) {
+            return $e->getMessage();
+        }
+
+        $this->catat($request, RiwayatAkun::UNDANG, $admin, $user->id, 'email');
+
+        return null;
+    }
+
+    private function bisaUndang(): bool
+    {
+        return $this->token !== null && $this->surat !== null && $this->surat->aktif() && $this->token->tersedia();
+    }
+
+    /**
      * User sasaran dari form beserta perannya. Hanya user yang punya akses tersendiri ke lingkup ini yang bisa
      * diubah, agar admin satu website tidak bisa menyentuh user website lain lewat ID. Admin super di website
      * tidak bisa diubah dari sana (hanya dari dashboard utama), jadi juga tidak termasuk.
@@ -311,6 +392,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $lingkup          = $this->pintu->lingkup;
         $jumlahAdminSuper = $this->daftar->jumlahAdminSuper();
         $diWebsite        = $lingkup !== Konteks::LINGKUP_UTAMA;
+        $bisaUndang       = $this->bisaUndang();
 
         $daftar = [];
         foreach ($this->daftar->userDiLingkup($lingkup) as $u) {
@@ -323,6 +405,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 'bisaUbahPeran' => ! $terkunci,
                 'bisaCabut'     => ! $terkunci,
                 'bisaAturAktif' => $this->kelolaAkun && ! $diri && ! ($super && $u['aktif'] && $jumlahAdminSuper <= 1),
+                'bisaUndang'    => $bisaUndang && ! $diri && ! $u['otomatis'] && $u['aktif'] && $u['terakhir_masuk'] === null,
                 'login'         => $u['terakhir_masuk'] === null ? null : $this->waktu($u['terakhir_masuk']),
             ];
         }
@@ -368,6 +451,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'formEmail'     => '',
             'formNama'      => '',
             'formPeran'     => DaftarUser::PERAN_ANGGOTA,
+            'pakaiUndangan' => $this->bisaUndang(),
         ];
     }
 
