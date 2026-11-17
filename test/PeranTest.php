@@ -95,8 +95,8 @@ final class PeranTest extends TestCase
 
     public function testLabel(): void
     {
-        self::assertSame('Admin super', DaftarUser::label('admin_super'));
-        self::assertSame('Admin web', DaftarUser::label('admin_web'));
+        self::assertSame('Admin Super', DaftarUser::label('admin_super'));
+        self::assertSame('Admin Web', DaftarUser::label('admin_web'));
         self::assertSame('Anggota', DaftarUser::label('anggota'));
         self::assertTrue(DaftarUser::peranAdmin('admin'));
         self::assertFalse(DaftarUser::peranAdmin('anggota'));
