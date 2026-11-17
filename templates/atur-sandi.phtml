@@ -1,0 +1,59 @@
+<?php
+/**
+ * Membuat kata sandi dari tautan email (undangan atau lupa kata sandi).
+ *
+ * @var bool $tidakBerlaku    tautan salah, sudah dipakai, atau kedaluwarsa
+ * @var bool $undangan        tautan dari undangan user baru
+ * @var string|null $galat
+ * @var string $token
+ * @var string $email
+ * @var string $nama
+ * @var int $minimalSandi
+ * @var string $alamatAtur
+ * @var string $alamatLupa
+ * @var string $alamatMasuk
+ * @var string $tokenCsrf
+ * @var string $fieldCsrf
+ */
+$this->headTitle($this->undangan ? 'Selamat datang' : 'Kata sandi baru');
+?>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-9 col-md-6 col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+<?php if ($this->tidakBerlaku) : ?>
+                    <h1 class="h3 text-center mb-4">Tautan tidak berlaku</h1>
+                    <div class="alert alert-warning" role="status">Tautan ini salah, sudah pernah dipakai, atau sudah kedaluwarsa.</div>
+                    <p class="text-center mb-0">
+                        <a href="<?= $this->escapeHtmlAttr($this->alamatLupa) ?>">Minta tautan baru</a> ·
+                        <a href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Halaman masuk</a>
+                    </p>
+<?php else : ?>
+                    <h1 class="h3 text-center mb-2"><?= $this->undangan ? 'Selamat datang, ' . $this->escapeHtml($this->nama) : 'Kata sandi baru' ?></h1>
+                    <p class="text-center text-body-secondary mb-4"><?= $this->undangan ? 'Buat kata sandi untuk akun' : 'Buat kata sandi baru untuk' ?> <?= $this->escapeHtml($this->email) ?></p>
+<?php if ($this->galat) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatAtur) ?>">
+                        <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
+                        <input type="hidden" name="token" value="<?= $this->escapeHtmlAttr($this->token) ?>">
+                        <!-- Untuk pengelola kata sandi browser: akun mana yang kata sandinya dibuat -->
+                        <input type="email" name="email" class="d-none" autocomplete="username" value="<?= $this->escapeHtmlAttr($this->email) ?>" readonly tabindex="-1" aria-hidden="true">
+                        <div class="mb-3">
+                            <label class="form-label" for="sandi-baru">Kata sandi</label>
+                            <input class="form-control" id="sandi-baru" name="sandi_baru" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required autofocus aria-describedby="sandi-syarat">
+                            <div class="form-text" id="sandi-syarat">Minimal <?= (int) $this->minimalSandi ?> karakter.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="sandi-ulang">Ulangi kata sandi</label>
+                            <input class="form-control" id="sandi-ulang" name="sandi_ulang" type="password" autocomplete="new-password" minlength="<?= (int) $this->minimalSandi ?>" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-semibold">Simpan kata sandi</button>
+                    </form>
+<?php endif ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
