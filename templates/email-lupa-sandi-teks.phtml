@@ -1,0 +1,19 @@
+<?php
+/**
+ * Email lupa kata sandi (teks biasa).
+ *
+ * @var string $nama
+ * @var string $tautan
+ * @var string $namaWebsite
+ * @var int $menit
+ */
+?>
+Halo <?= $this->nama ?>,
+
+Ada permintaan untuk membuat kata sandi baru bagi akun Anda di <?= $this->namaWebsite ?>. Buka tautan berikut:
+
+<?= $this->tautan ?>
+
+
+Tautan berlaku <?= (int) $this->menit ?> menit dan hanya bisa dipakai sekali.
+Bila bukan Anda yang memintanya, abaikan email ini. Kata sandi Anda tidak berubah.
