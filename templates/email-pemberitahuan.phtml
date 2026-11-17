@@ -1,0 +1,17 @@
+<?php
+/**
+ * Pemberitahuan ke email lama tentang permintaan atau perubahan email akun (HTML).
+ *
+ * @var string $nama
+ * @var string $emailBaru
+ * @var bool $sudahDiganti
+ * @var string $namaWebsite
+ */
+?>
+<p style="margin:0 0 12px;">Halo <?= $this->escapeHtml($this->nama) ?>,</p>
+<?php if ($this->sudahDiganti) : ?>
+<p style="margin:0 0 12px;">Email akun Anda di <strong><?= $this->escapeHtml($this->namaWebsite) ?></strong> sudah diganti menjadi <strong><?= $this->escapeHtml($this->emailBaru) ?></strong>. Mulai sekarang, masuk dengan email itu.</p>
+<?php else : ?>
+<p style="margin:0 0 12px;">Ada permintaan untuk mengganti email akun Anda di <strong><?= $this->escapeHtml($this->namaWebsite) ?></strong> menjadi <strong><?= $this->escapeHtml($this->emailBaru) ?></strong>. Email akun baru berubah setelah tautan konfirmasi di email baru dibuka.</p>
+<?php endif ?>
+<p style="margin:0;font-size:13px;color:#5c6b63;">Bila bukan Anda yang melakukannya, segera ganti kata sandi Anda dan hubungi admin.</p>
