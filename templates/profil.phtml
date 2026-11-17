@@ -13,6 +13,7 @@ $this->headTitle('Profil');
     'user'         => $this->user,
     'alamatKeluar' => $this->alamatKeluar,
     'alamatProfil' => $this->alamatProfil,
+    'alamatPengaturan' => $this->alamatPengaturan ?? null,
     'tokenCsrf'    => $this->tokenCsrf,
     'fieldCsrf'    => $this->fieldCsrf,
 ]) ?>
@@ -20,12 +21,7 @@ $this->headTitle('Profil');
     'user'         => $this->user,
     'pesan'        => $this->pesan,
     'galat'        => $this->galat,
-    'galatBagian'  => $this->galatBagian,
-    'nama'         => $this->nama,
-    'alamatProfil' => $this->alamatProfil,
-    'minimalSandi' => $this->minimalSandi,
-    'zonaWaktu'    => $this->zonaWaktu,
-    'riwayat'      => $this->riwayat,
-    'tokenCsrf'    => $this->tokenCsrf,
-    'fieldCsrf'    => $this->fieldCsrf,
+    'peran'        => $this->peran,
+    'aktif'        => $this->aktif,
+    'alamatPengaturan' => $this->alamatPengaturan ?? null,
 ]) ?>
