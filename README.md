@@ -41,6 +41,21 @@ vendor/bin/dapur-user pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
 
+### Memperbarui dari 2.1 ke 2.2
+
+Versi 2.2 membuat satu akun bisa punya beberapa email (lihat [Satu akun, banyak email](#satu-akun-banyak-email)),
+dan website bisa mewajibkan email domain tertentu. Ada tabel baru `user_email` dan kolom baru
+`user_akses.email_id` serta `user_riwayat_masuk.email`. Jalankan dari folder inti:
+
+```bash
+composer update
+vendor/bin/dapur-user pasang
+```
+
+lalu hapus cache konfigurasi. `pasang` kini juga **menambah kolom** yang belum ada pada tabel lama (data tidak
+diubah), lalu mencatat email setiap akun di tabel `user_email`. Sebelum `pasang` dijalankan, login dengan email
+utama tetap berjalan seperti 2.1, tetapi bagian "Email saya" belum tampil.
+
 ### Memperbarui dari 2.0 ke 2.1
 
 Versi 2.1 menambah email undangan, lupa kata sandi, dan ganti email, beserta tabel `user_token`. Jalankan dari
@@ -116,9 +131,13 @@ return [
         'riwayat_hari' => 180,    // lama riwayat login disimpan; 0 = tidak pernah dihapus
         'zona_waktu'   => 'Asia/Jakarta', // zona waktu tampilan, bawaan zona waktu PHP
         'alamat_website' => 'https://contoh.com', // alamat untuk tautan di email; bawaan dari request
+        'domain_email' => ['kantor.co.id'],       // hanya email domain ini di website ini; bawaan semua email
     ],
 ];
 ```
+
+`domain_email` biasanya ditulis di `config/autoload/*.php` milik website tertentu, bukan di inti; lihat
+[Batasan domain email](#batasan-domain-email).
 
 ### Nama tabel
 
@@ -131,6 +150,7 @@ return [
 | `user_riwayat_akun` | `xyz_user_riwayat_akun` | Riwayat perubahan akun |
 | `user_pengaturan` | `xyz_user_pengaturan` | Pengaturan kecil per user |
 | `user_token` | `xyz_user_token` | Token sekali pakai untuk tautan email (hanya hash-nya) |
+| `user_email` | `xyz_user_email` | Semua email milik akun yang sudah dikonfirmasi |
 
 Awalan hanya boleh berisi huruf, angka, dan garis bawah, paling panjang 32 karakter. Perintah `dapur-user`
 membaca pengaturan yang sama, jadi atur awalan sebelum menjalankan `pasang`.
@@ -138,20 +158,26 @@ membaca pengaturan yang sama, jadi atur awalan sebelum menjalankan `pasang`.
 ## Perintah
 
 ```bash
-vendor/bin/dapur-user pasang                          # membuat tabel yang belum ada dan memperbarui peran lama, aman diulang
+vendor/bin/dapur-user pasang                          # membuat tabel dan kolom yang belum ada, aman diulang
 vendor/bin/dapur-user buat-admin <email>              # membuat admin super (inti) atau admin web (--website)
 vendor/bin/dapur-user ganti-sandi <email>             # mengganti kata sandi
 vendor/bin/dapur-user riwayat <email> [--jumlah=20]   # menampilkan riwayat login user
 vendor/bin/dapur-user daftar-akses [<email>]          # user di lingkup ini, atau semua akses satu user
 vendor/bin/dapur-user cabut-akses <email>             # mencabut akses user dari lingkup ini
 vendor/bin/dapur-user riwayat-akun [<email>]          # perubahan akun di lingkup ini, atau pada satu user
+vendor/bin/dapur-user daftar-email <email>            # semua email satu akun
+vendor/bin/dapur-user tambah-email <email> <baru>     # menambahkan email ke akun tanpa tautan konfirmasi
 ```
 
 Dengan paket multi-website, tambahkan `--website=<domain>` untuk website tertentu. Lingkup akses yang diberikan
 `buat-admin` adalah `dashboard` di inti (peran admin super), atau nama domain website (peran admin web).
 
-`pasang` melaporkan setiap tabel: `dibuat` atau `sudah ada`. Tabel yang sudah ada beserta isinya tidak diubah;
-perintah ini tidak pernah menghapus tabel.
+`pasang` melaporkan setiap tabel: `dibuat` atau `sudah ada`, lalu setiap kolom baru yang ditambahkan ke tabel lama
+(`ALTER TABLE ... ADD COLUMN`). Data yang sudah ada tidak diubah; perintah ini tidak pernah menghapus tabel atau
+kolom. Cara ini membuat instalasi lama ikut lengkap saat versi baru membutuhkan kolom tambahan.
+
+`tambah-email` cocok bila pengiriman email belum diatur, atau untuk membantu user yang tidak bisa membuka tautan
+konfirmasi. Pastikan email itu memang milik orang yang sama, karena email tambahan bisa dipakai untuk masuk.
 
 `cabut-akses` hanya mencabut akses ke lingkup yang dituju; akun user dan aksesnya ke lingkup lain tetap ada.
 Admin super terakhir tidak bisa dicabut, agar Dapur tidak terkunci. Akses otomatis admin super ke website hanya
@@ -176,8 +202,10 @@ email, peran, status) dengan tombol **Pengaturan akun**.
 Halaman `<alamat dasar>/pengaturan` (tautan "Pengaturan & Privasi" di submenu avatar) berisi tiga tab, yang bisa
 dibuka langsung lewat `?tab=akun|aktivitas|riwayat`:
 
-- **Akun Saya**: mengubah nama (tombol Simpan dan Batal), serta dua tombol yang membuka popup:
-  - **Ubah** di samping email, bila pengiriman email aktif (lihat [Email](#email));
+- **Akun Saya**: mengubah nama (tombol Simpan dan Batal), **Email saya** (lihat
+  [Satu akun, banyak email](#satu-akun-banyak-email)), dan tombol yang membuka popup:
+  - **Ubah** di samping email utama, bila pengiriman email aktif (lihat [Email](#email));
+  - **Tambah email**, bila pengiriman email aktif;
   - **Atur kata sandi baru**. Kata sandi sekarang wajib diisi, dan salah ketik dihitung seperti login gagal.
     Setelah berhasil, session di perangkat lain berakhir, sedangkan perangkat yang dipakai tetap login.
 
@@ -192,6 +220,49 @@ menambah 20 baris (`?tab=riwayat&jumlah=40`, dan seterusnya, paling banyak 480) 
 Catatan yang lebih lama bisa dilihat dengan perintah `riwayat` dan `riwayat-akun`.
 
 Tautan lama ke tab profil (`/profil?tab=sandi` dan sebagainya) dialihkan ke tab yang sesuai di halaman ini.
+
+## Satu akun, banyak email
+
+Satu orang bisa memakai email berbeda untuk website berbeda, misalnya email pribadi untuk website hobi dan email
+kantor untuk website kantor, tetapi tetap **satu akun**: nama, kata sandi, dan riwayatnya sama. Semua email akun
+bisa dipakai untuk masuk.
+
+Di Pengaturan & Privasi, bagian **Email saya** menampilkan semua email akun:
+
+- **Tambah email**: wajib memasukkan kata sandi sekarang. Tautan konfirmasi (berlaku 24 jam) dikirim ke email itu,
+  dan email baru masuk ke akun setelah tautannya dibuka. Email yang sudah dimiliki akun lain ditolak.
+- **Jadikan utama**: email utama dipakai untuk login biasa dan email dari dashboard utama.
+- **Hapus**: email utama tidak bisa dihapus. Website yang memakai email itu kembali memakai email utama.
+- **Email untuk website ini**: email yang dilihat rekan di website yang sedang dibuka, dan dipakai untuk email dari
+  website itu (undangan, misalnya). Dipilih di halaman Pengaturan & Privasi website masing-masing, sehingga rekan
+  kantor tidak melihat email pribadi.
+
+Sistem hanya mengenali orang dari email. Dua email yang belum disatukan dalam satu akun berarti dua akun; tidak ada
+penggabungan otomatis lewat perangkat, IP, atau nama, karena salah gabung bisa membuka akun orang lain.
+
+Perubahan ini tercatat di riwayat akun: `tambah_email`, `hapus_email`, `email_utama`, dan `email_website`.
+
+## Batasan domain email
+
+Website bisa mewajibkan email dengan domain tertentu, misalnya website kantor yang hanya menerima email kantor.
+Tulis di `config/autoload/*.php` milik website itu:
+
+```php
+return ['user' => ['domain_email' => ['kantor.co.id']]];
+```
+
+Di website itu:
+
+- **Tambah user dan undangan** hanya menerima email `@kantor.co.id`. Bila email itu sudah menjadi email tambahan
+  sebuah akun, akun itulah yang diberi akses, dan email kantor menjadi email untuk website ini.
+- **Login** hanya dengan email `@kantor.co.id`. Email lain dari akun yang sama ditolak dengan pesan yang menyebut
+  domainnya; pesan ini baru muncul bila kata sandinya benar, agar tidak bisa dipakai menebak email. Di riwayat
+  login, penolakan ini tercatat sebagai **Ditolak (domain)**, bukan Gagal.
+- **Email untuk website ini** hanya bisa dipilih dari email domain tersebut.
+- **Lupa kata sandi** tetap memberi jawaban yang sama, tetapi tautan hanya dikirim ke email domain tersebut.
+
+Admin super tidak terkena batasan ini, karena berlaku di semua website. Website tanpa `domain_email` menerima email
+apa pun.
 
 ## Peran
 
@@ -245,7 +316,8 @@ Bila pengiriman email diatur di [adems/dapur-email](https://github.com/AdeMS/dap
 |---|---|---|
 | **Undangan** user baru | 48 jam | User membuat kata sandinya sendiri, jadi admin tidak pernah tahu kata sandinya |
 | **Lupa kata sandi** | 1 jam | Tautan "Lupa kata sandi?" di halaman masuk |
-| **Ubah email** di Profil | 24 jam | Tautan konfirmasi dikirim ke email baru; email lama menerima pemberitahuan |
+| **Ubah email** di Pengaturan & Privasi | 24 jam | Tautan konfirmasi dikirim ke email baru; email lama menerima pemberitahuan |
+| **Tambah email** di Pengaturan & Privasi | 24 jam | Tautan konfirmasi dikirim ke email yang ditambahkan; email utama tidak berubah |
 
 Halaman-halamannya berada di bawah alamat dasar pintu: `<alamat dasar>/lupa-sandi`, `/atur-sandi` (membuat kata
 sandi dari undangan atau lupa kata sandi), dan `/verifikasi-email`.
@@ -272,7 +344,8 @@ dan `user::email-pemberitahuan` (masing-masing dengan versi `-teks`), yang bisa 
 
 Setiap perubahan akun dicatat bersama pelaku, user sasaran, lingkup tempat perubahan dilakukan, keterangan
 (misalnya `anggota → admin_web`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
-diubah, serta akun diaktifkan atau dinonaktifkan. Perubahan lewat perintah di terminal dicatat tanpa pelaku.
+diubah, akun diaktifkan atau dinonaktifkan, serta email ditambah, dihapus, dijadikan utama, atau dipilih untuk
+website. Perubahan lewat perintah di terminal dicatat tanpa pelaku.
 
 Riwayat akun disimpan selamanya. Lihat dengan `vendor/bin/dapur-user riwayat-akun`, atau di bagian aktivitas
 terakhir pada halaman kelola user.
@@ -280,11 +353,14 @@ terakhir pada halaman kelola user.
 ## Riwayat login
 
 Setiap login berhasil, login gagal, keluar, dan ganti kata sandi dicatat bersama lingkup, IP, perangkat (user agent browser), dan
-waktunya. Waktu disimpan dalam UTC; perintah `riwayat` menampilkannya menurut `zona_waktu` (bawaan: zona waktu
+waktunya. Sejak 2.2 juga **email yang dipakai**, karena satu akun bisa punya beberapa email. Waktu disimpan dalam UTC; perintah `riwayat` menampilkannya menurut `zona_waktu` (bawaan: zona waktu
 PHP).
 
-- Login gagal dengan email yang tidak terdaftar dicatat tanpa user. Email yang diketik tidak pernah disimpan,
-  karena orang kadang salah mengetik kata sandi di kolom email.
+- Login gagal dengan email yang tidak terdaftar dicatat tanpa user dan tanpa email. Email yang tidak dikenal tidak
+  pernah disimpan, karena orang kadang salah mengetik kata sandi di kolom email.
+- Login dengan kata sandi benar tetapi email di luar domain yang diwajibkan website tercatat sebagai
+  `ditolak_domain` (Ditolak (domain)), bukan `gagal`.
+- Email dicatat hanya bila milik akun itu. Catatan dari sebelum 2.2, dan perubahan lewat terminal, tanpa email.
 - Percobaan yang ditolak karena terlalu sering tidak dicatat, agar riwayat tidak bisa dibanjiri.
 - Catatan yang lebih tua dari `riwayat_hari` dihapus otomatis saat ada login berhasil.
 
