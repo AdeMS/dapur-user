@@ -44,6 +44,10 @@ final class DaftarUser
     /** Nama tabel yang sudah diberi tanda kutip sesuai database. */
     private readonly string $tUser;
     private readonly string $tAkses;
+    private readonly string $tEmail;
+
+    /** Email tambahan (2.2) tersedia sesudah perintah pasang; sebelum itu hanya email utama yang dikenal. */
+    private readonly EmailUser $email;
 
     public function __construct(
         private readonly Adapter $db,
@@ -52,11 +56,23 @@ final class DaftarUser
         $platform     = $db->getPlatform();
         $this->tUser  = $platform->quoteIdentifier($tabel->user());
         $this->tAkses = $platform->quoteIdentifier($tabel->akses());
+        $this->tEmail = $platform->quoteIdentifier($tabel->email());
+        $this->email  = new EmailUser($db, $tabel);
     }
 
+    /** Mencari akun lewat email utama atau email tambahannya. */
     public function cariEmail(string $email): ?User
     {
-        return $this->user("SELECT * FROM {$this->tUser} WHERE email = ?", [self::normalkanEmail($email)]);
+        $email = self::normalkanEmail($email);
+        $user  = $this->user("SELECT * FROM {$this->tUser} WHERE email = ?", [$email]);
+        if ($user !== null || ! $this->email->tersedia()) {
+            return $user;
+        }
+
+        return $this->user(
+            "SELECT u.* FROM {$this->tUser} u JOIN {$this->tEmail} e ON e.user_id = u.id WHERE e.email = ?",
+            [$email],
+        );
     }
 
     public function cariId(int $id): ?User
@@ -71,7 +87,12 @@ final class DaftarUser
             [self::normalkanEmail($email), $nama, self::hash($kataSandi), gmdate('Y-m-d H:i:s')],
         );
 
-        return (int) $this->db->getDriver()->getLastGeneratedValue();
+        $id = (int) $this->db->getDriver()->getLastGeneratedValue();
+        if ($this->email->tersedia()) {
+            $this->email->tambah($id, $email);
+        }
+
+        return $id;
     }
 
     public function gantiSandi(int $id, string $kataSandi): void
@@ -79,10 +100,32 @@ final class DaftarUser
         $this->jalankan("UPDATE {$this->tUser} SET kata_sandi = ? WHERE id = ?", [self::hash($kataSandi), $id]);
     }
 
-    /** Mengganti email login. Pastikan lebih dulu email itu belum dipakai akun lain. */
+    /**
+     * Mengganti email utama dengan email baru, dan melepas email utama yang lama dari akun (email tambahan lain
+     * tetap). Pastikan lebih dulu email baru itu belum dimiliki akun lain.
+     */
     public function gantiEmail(int $id, string $email): void
     {
-        $this->jalankan("UPDATE {$this->tUser} SET email = ? WHERE id = ?", [self::normalkanEmail($email), $id]);
+        $email = self::normalkanEmail($email);
+        if (! $this->email->tersedia()) {
+            $this->jalankan("UPDATE {$this->tUser} SET email = ? WHERE id = ?", [$email, $id]);
+
+            return;
+        }
+
+        $lama  = $this->cariId($id)?->email;
+        $baru  = $this->email->id($id, $email) ?? $this->email->tambah($id, $email);
+        $this->email->jadikanUtama($id, $baru);
+        $idLama = $lama === null || $lama === $email ? null : $this->email->id($id, $lama);
+        if ($idLama !== null) {
+            $this->email->hapus($id, $idLama);
+        }
+    }
+
+    /** Pengelola email tambahan akun. */
+    public function email(): EmailUser
+    {
+        return $this->email;
     }
 
     public function gantiNama(int $id, string $nama): void
@@ -118,12 +161,22 @@ final class DaftarUser
         return $this->peranTersimpan($id, Konteks::LINGKUP_UTAMA) === self::PERAN_ADMIN_SUPER;
     }
 
-    /** Memberi akses; tanpa peran, user menjadi admin sesuai lingkupnya (admin super atau admin web). */
-    public function tambahAkses(int $id, string $lingkup, ?string $peran = null): void
+    /**
+     * Memberi akses; tanpa peran, user menjadi admin sesuai lingkupnya (admin super atau admin web). Dengan $email,
+     * email itu (milik akun ini) menjadi email yang dipakai di lingkup tersebut.
+     */
+    public function tambahAkses(int $id, string $lingkup, ?string $peran = null, ?string $email = null): void
     {
         if (! $this->punyaAkses($id, $lingkup)) {
             $peran ??= self::peranAdminUntuk($lingkup);
             $this->jalankan("INSERT INTO {$this->tAkses} (user_id, lingkup, peran) VALUES (?, ?, ?)", [$id, $lingkup, $peran]);
+        }
+
+        if ($email !== null && $this->email->tersedia()) {
+            $emailId = $this->email->id($id, $email);
+            if ($emailId !== null && $email !== $this->cariId($id)?->email) {
+                $this->email->aturEmailLingkup($id, $lingkup, $emailId);
+            }
         }
     }
 
@@ -255,8 +308,13 @@ final class DaftarUser
     public function userDiLingkup(string $lingkup): array
     {
         $hasil = [];
-        $sql   = "SELECT u.id, u.email, u.nama, u.aktif, u.terakhir_masuk, a.lingkup, a.peran FROM {$this->tUser} u"
-            . " JOIN {$this->tAkses} a ON a.user_id = u.id WHERE a.lingkup = ?";
+        // Email yang tampil adalah email pilihan user untuk lingkup itu (2.2), atau email utama.
+        $sql   = $this->email->tersedia()
+            ? "SELECT u.id, COALESCE(e.email, u.email) AS email, u.nama, u.aktif, u.terakhir_masuk, a.lingkup, a.peran"
+                . " FROM {$this->tUser} u JOIN {$this->tAkses} a ON a.user_id = u.id"
+                . " LEFT JOIN {$this->tEmail} e ON e.id = a.email_id AND e.user_id = u.id WHERE a.lingkup = ?"
+            : "SELECT u.id, u.email, u.nama, u.aktif, u.terakhir_masuk, a.lingkup, a.peran FROM {$this->tUser} u"
+                . " JOIN {$this->tAkses} a ON a.user_id = u.id WHERE a.lingkup = ?";
         foreach ($this->baris($sql, [$lingkup]) as $b) {
             $hasil[(int) $b['id']] = self::barisUser($b, false);
         }
