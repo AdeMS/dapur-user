@@ -45,10 +45,13 @@ final class SuratUser
         return $dasar . $jalur . ($query !== [] ? '?' . http_build_query($query) : '');
     }
 
-    /** @throws GagalKirim */
-    public function kirimUndangan(User $user, string $tautan, string $pengundang, string $namaWebsite): void
+    /**
+     * @param string|null $kepada email tujuan bila bukan email utama, misalnya email kantor untuk website kantor
+     * @throws GagalKirim
+     */
+    public function kirimUndangan(User $user, string $tautan, string $pengundang, string $namaWebsite, ?string $kepada = null): void
     {
-        $this->kirim('user::email-undangan', $user->email, $user->nama, "Undangan bergabung ke {$namaWebsite}", [
+        $this->kirim('user::email-undangan', $kepada ?? $user->email, $user->nama, "Undangan bergabung ke {$namaWebsite}", [
             'nama'        => $user->nama,
             'tautan'      => $tautan,
             'pengundang'  => $pengundang,
@@ -57,10 +60,14 @@ final class SuratUser
         ]);
     }
 
-    /** @throws GagalKirim */
-    public function kirimLupaSandi(User $user, string $tautan, string $namaWebsite): void
+    /**
+     * @param string|null $kepada email tujuan bila bukan email utama, misalnya email yang diketik di halaman lupa
+     *                            kata sandi (email tambahan akun itu)
+     * @throws GagalKirim
+     */
+    public function kirimLupaSandi(User $user, string $tautan, string $namaWebsite, ?string $kepada = null): void
     {
-        $this->kirim('user::email-lupa-sandi', $user->email, $user->nama, "Atur ulang kata sandi {$namaWebsite}", [
+        $this->kirim('user::email-lupa-sandi', $kepada ?? $user->email, $user->nama, "Atur ulang kata sandi {$namaWebsite}", [
             'nama'        => $user->nama,
             'tautan'      => $tautan,
             'namaWebsite' => $namaWebsite,
@@ -69,9 +76,10 @@ final class SuratUser
     }
 
     /** @throws GagalKirim */
-    public function kirimVerifikasiEmail(User $user, string $emailBaru, string $tautan, string $namaWebsite): void
+    public function kirimVerifikasiEmail(User $user, string $emailBaru, string $tautan, string $namaWebsite, bool $tambah = false): void
     {
         $this->kirim('user::email-verifikasi', $emailBaru, $user->nama, "Konfirmasi email baru {$namaWebsite}", [
+            'tambah'      => $tambah,
             'nama'        => $user->nama,
             'emailBaru'   => $emailBaru,
             'tautan'      => $tautan,
