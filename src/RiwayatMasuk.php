@@ -23,18 +23,25 @@ final class RiwayatMasuk
     public const KELUAR      = 'keluar';
     public const GANTI_SANDI = 'ganti_sandi';
 
+    /** Email dan kata sandi benar, tetapi website ini hanya menerima email domain tertentu (2.2). */
+    public const DITOLAK_DOMAIN = 'ditolak_domain';
+
     /** Label peristiwa untuk tampilan. */
     private const LABEL = [
         self::MASUK       => 'Masuk',
         self::GAGAL       => 'Gagal',
         self::KELUAR      => 'Keluar',
         self::GANTI_SANDI => 'Ganti kata sandi',
+        self::DITOLAK_DOMAIN => 'Ditolak (domain)',
     ];
 
     private const PANJANG_PERANGKAT = 255;
 
     /** Nama tabel yang sudah diberi tanda kutip sesuai database. */
     private readonly string $tabel;
+
+    /** Kolom email (2.2) ada sesudah perintah pasang; sebelum itu email tidak dicatat. */
+    private ?bool $adaEmail = null;
 
     /** @param int $simpanHari catatan yang lebih tua dari ini dihapus saat login berhasil; 0 = tidak dihapus */
     public function __construct(
@@ -45,12 +52,24 @@ final class RiwayatMasuk
         $this->tabel = $db->getPlatform()->quoteIdentifier($tabel->riwayat());
     }
 
-    public function catat(string $peristiwa, ?int $userId, string $lingkup, string $ip, string $perangkat): void
+    /**
+     * @param string $email email yang dipakai untuk login, bila milik akun ini (akun bisa punya beberapa email).
+     *                      Email yang tidak terdaftar tidak dicatat, agar riwayat tidak menimbun alamat orang lain.
+     */
+    public function catat(string $peristiwa, ?int $userId, string $lingkup, string $ip, string $perangkat, string $email = ''): void
     {
-        $this->db->query(
-            "INSERT INTO {$this->tabel} (user_id, lingkup, peristiwa, ip, perangkat, waktu) VALUES (?, ?, ?, ?, ?, ?)",
-            [$userId, $lingkup, $peristiwa, substr($ip, 0, 45), self::potong($perangkat), gmdate('Y-m-d H:i:s')],
-        );
+        $nilai = [$userId, $lingkup, $peristiwa, substr($ip, 0, 45), self::potong($perangkat), gmdate('Y-m-d H:i:s')];
+        if ($this->adaEmail()) {
+            $this->db->query(
+                "INSERT INTO {$this->tabel} (user_id, lingkup, peristiwa, ip, perangkat, waktu, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [...$nilai, $userId === null ? '' : substr(DaftarUser::normalkanEmail($email), 0, 190)],
+            );
+        } else {
+            $this->db->query(
+                "INSERT INTO {$this->tabel} (user_id, lingkup, peristiwa, ip, perangkat, waktu) VALUES (?, ?, ?, ?, ?, ?)",
+                $nilai,
+            );
+        }
 
         if ($peristiwa === self::MASUK && $this->simpanHari > 0) {
             $this->db->query(
@@ -63,13 +82,14 @@ final class RiwayatMasuk
     /**
      * Catatan terbaru milik satu user, yang paling baru lebih dulu. Waktu dalam UTC.
      *
-     * @return list<array{peristiwa: string, lingkup: string, ip: string, perangkat: string, waktu: string}>
+     * @return list<array{peristiwa: string, lingkup: string, ip: string, perangkat: string, waktu: string, email: string}>
      */
     public function untukUser(int $userId, int $jumlah = 20): array
     {
         $jumlah = max(1, min(500, $jumlah));
+        $email  = $this->adaEmail() ? ', email' : '';
         $hasil  = $this->db->query(
-            "SELECT peristiwa, lingkup, ip, perangkat, waktu FROM {$this->tabel} WHERE user_id = ? ORDER BY waktu DESC, id DESC LIMIT {$jumlah}",
+            "SELECT peristiwa, lingkup, ip, perangkat, waktu{$email} FROM {$this->tabel} WHERE user_id = ? ORDER BY waktu DESC, id DESC LIMIT {$jumlah}",
             [$userId],
         );
 
@@ -81,10 +101,25 @@ final class RiwayatMasuk
                 'ip'        => (string) $b['ip'],
                 'perangkat' => (string) $b['perangkat'],
                 'waktu'     => (string) $b['waktu'],
+                'email'     => (string) ($b['email'] ?? ''),
             ];
         }
 
         return $baris;
+    }
+
+    private function adaEmail(): bool
+    {
+        if ($this->adaEmail !== true) {
+            try {
+                $this->db->query("SELECT email FROM {$this->tabel} WHERE 1 = 0", Adapter::QUERY_MODE_EXECUTE);
+                $this->adaEmail = true;
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function label(string $peristiwa): string
