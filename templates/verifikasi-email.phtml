@@ -7,6 +7,7 @@
  * @var string $token
  * @var string $emailBaru
  * @var string $emailLama
+ * @var bool $tambah             menambah email (bukan mengganti email utama)
  * @var string $alamatVerifikasi
  * @var string $alamatMasuk
  * @var string $tokenCsrf
@@ -27,11 +28,15 @@ $this->headTitle('Konfirmasi Email Baru');
 <?php if ($this->galat) : ?>
                     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
 <?php endif ?>
+<?php if ($this->tambah ?? false) : ?>
+                    <p><strong><?= $this->escapeHtml($this->emailBaru) ?></strong> akan ditambahkan ke akun Anda. Sesudah itu email ini bisa dipakai untuk masuk dan dipilih sebagai email untuk website tertentu.</p>
+<?php else : ?>
                     <p>Email akun akan diganti dari <strong><?= $this->escapeHtml($this->emailLama) ?></strong> menjadi <strong><?= $this->escapeHtml($this->emailBaru) ?></strong>. Setelah itu, masuk dengan email baru.</p>
+<?php endif ?>
                     <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatVerifikasi) ?>">
                         <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
                         <input type="hidden" name="token" value="<?= $this->escapeHtmlAttr($this->token) ?>">
-                        <button type="submit" class="btn btn-success w-100 fw-semibold">Ya, ganti email saya</button>
+                        <button type="submit" class="btn btn-success w-100 fw-semibold"><?= ($this->tambah ?? false) ? 'Ya, tambahkan email ini' : 'Ya, ganti email saya' ?></button>
                     </form>
 <?php endif ?>
                 </div>
