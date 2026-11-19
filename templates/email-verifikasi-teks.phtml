@@ -4,6 +4,7 @@
  *
  * @var string $nama
  * @var string $emailBaru
+ * @var bool $tambah
  * @var string $tautan
  * @var string $namaWebsite
  * @var int $jam
@@ -11,10 +12,14 @@
 ?>
 Halo <?= $this->nama ?>,
 
+<?php if ($this->tambah ?? false) : ?>
+Anda meminta agar <?= $this->emailBaru ?> ditambahkan ke akun Anda di <?= $this->namaWebsite ?>. Konfirmasi lewat tautan berikut:
+<?php else : ?>
 Anda meminta agar email akun Anda di <?= $this->namaWebsite ?> diganti menjadi <?= $this->emailBaru ?>. Konfirmasi lewat tautan berikut:
+<?php endif ?>
 
 <?= $this->tautan ?>
 
 
 Tautan berlaku <?= (int) $this->jam ?> jam dan hanya bisa dipakai sekali.
-Bila bukan Anda yang memintanya, abaikan email ini. Email akun tidak berubah.
+Bila bukan Anda yang memintanya, abaikan email ini. Akun tidak berubah.
