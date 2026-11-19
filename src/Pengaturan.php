@@ -28,6 +28,9 @@ final class Pengaturan
      */
     public readonly ?string $alamatWebsite;
 
+    /** Domain email yang diwajibkan di website ini (kosong: semua email diterima). */
+    public readonly BatasanDomain $domainEmail;
+
     /** @param array<string, mixed> $config */
     public function __construct(array $config)
     {
@@ -47,6 +50,7 @@ final class Pengaturan
         }
 
         $this->alamatWebsite = $alamat === null ? null : rtrim($alamat, '/');
+        $this->domainEmail   = BatasanDomain::dariPengaturan($config['domain_email'] ?? null);
     }
 
     private static function zona(mixed $nama): DateTimeZone
