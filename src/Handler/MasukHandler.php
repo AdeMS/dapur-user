@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\User\Autentikasi;
+use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\HasilMasuk;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\Pintu;
@@ -68,6 +69,10 @@ final class MasukHandler implements RequestHandlerInterface
             return $this->halaman($sesi, 'Terlalu banyak percobaan. Silakan coba lagi nanti.', $email, 429);
         }
 
+        if ($hasil->status === HasilMasuk::DOMAIN) {
+            return $this->halaman($sesi, 'Website ini hanya menerima email ' . $this->autentikasi->batasan()->teks() . '. Masuk dengan email tersebut.', $email, 403);
+        }
+
         if ($hasil->status !== HasilMasuk::BERHASIL || $hasil->user === null) {
             return $this->halaman($sesi, 'Email atau kata sandi salah.', $email, 401);
         }
@@ -80,6 +85,7 @@ final class MasukHandler implements RequestHandlerInterface
         $sesi->simpan(WajibMasukMiddleware::SESI_USER, $hasil->user->id);
         $sesi->simpan(WajibMasukMiddleware::SESI_TERAKHIR, time());
         $sesi->simpan(WajibMasukMiddleware::SESI_SANDI, $hasil->user->sidikSandi());
+        $sesi->simpan(WajibMasukMiddleware::SESI_EMAIL, DaftarUser::normalkanEmail($email));
 
         return new RedirectResponse($this->pintu->tujuanSah($tujuan) ? $tujuan : $this->pintu->rute());
     }
