@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\Email\GagalKirim;
+use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\PembatasPercobaan;
 use AdeMS\Dapur\User\Pintu;
@@ -36,6 +37,7 @@ final class LupaSandiHandler implements RequestHandlerInterface
         private readonly HalamanPublik $halaman,
         private readonly Pintu $pintu,
         private readonly string $namaWebsite,
+        private readonly BatasanDomain $domain = new BatasanDomain(),
     ) {
     }
 
@@ -71,14 +73,21 @@ final class LupaSandiHandler implements RequestHandlerInterface
 
         $this->pembatas->catat($kunci, $ip);
 
+        // Tautan dikirim ke email yang diketik (bisa email tambahan akun itu). Di website yang mewajibkan email
+        // kantor, email lain tidak dikirimi apa pun, kecuali milik admin super; jawabannya tetap sama.
         $user = $this->daftar->cariEmail($email);
-        if ($user !== null && $user->aktif && $this->daftar->peran($user->id, $this->pintu->lingkup) !== null) {
-            $token = $this->token->buat($user->id, TokenUser::LUPA_SANDI);
+        $peran = $user === null ? null : $this->daftar->peran($user->id, $this->pintu->lingkup);
+        if (
+            $user !== null && $user->aktif && $peran !== null
+            && ($this->domain->cocok($email) || $peran === DaftarUser::PERAN_ADMIN_SUPER)
+        ) {
+            $token = $this->token->buat($user->id, TokenUser::LUPA_SANDI, $email);
             try {
                 $this->surat->kirimLupaSandi(
                     $user,
                     $this->surat->alamatLengkap($request, $this->pintu->alamatAturSandi(), ['token' => $token]),
                     $this->namaWebsite,
+                    $email,
                 );
             } catch (GagalKirim $e) {
                 // Jawaban tetap sama agar keberadaan akun tidak terbuka; kegagalan dicatat untuk admin.
