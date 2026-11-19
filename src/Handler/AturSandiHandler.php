@@ -81,6 +81,8 @@ final class AturSandiHandler implements RequestHandlerInterface
             $this->pintu->lingkup,
             (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
             $request->getHeaderLine('User-Agent'),
+            // Email tujuan tautan (sejak 2.2 disimpan di token); token lama tanpa email dicatat kosong.
+            filter_var($data['data'], FILTER_VALIDATE_EMAIL) !== false ? $data['data'] : '',
         );
 
         $sesi->simpan(ProfilHandler::SESI_PESAN, 'Kata sandi sudah dibuat. Silakan masuk dengan kata sandi baru.');
