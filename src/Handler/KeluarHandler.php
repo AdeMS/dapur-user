@@ -41,11 +41,20 @@ final class KeluarHandler implements RequestHandlerInterface
                 $this->pintu->lingkup,
                 (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
                 $request->getHeaderLine('User-Agent'),
+                self::emailSesi($sesi),
             );
         }
 
         $sesi->hancurkan();
 
         return new RedirectResponse($this->pintu->alamatMasuk());
+    }
+
+    /** Email yang dipakai untuk login di session ini, atau kosong (session dari versi sebelum 2.2). */
+    public static function emailSesi(Sesi $sesi): string
+    {
+        $email = $sesi->ambil(\AdeMS\Dapur\User\Middleware\WajibMasukMiddleware::SESI_EMAIL);
+
+        return is_string($email) ? $email : '';
     }
 }
