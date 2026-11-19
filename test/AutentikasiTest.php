@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Test;
 
 use AdeMS\Dapur\User\Autentikasi;
+use AdeMS\Dapur\User\BatasanDomain;
+use AdeMS\Dapur\User\EmailUser;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\HasilMasuk;
 use AdeMS\Dapur\User\PembatasPercobaan;
@@ -38,6 +40,56 @@ final class AutentikasiTest extends TestCase
     private function masuk(string $sandi = self::SANDI, string $email = 'admin@contoh.com', string $lingkup = 'dashboard', string $ip = self::IP): HasilMasuk
     {
         return $this->autentikasi->masuk($email, $sandi, $ip, $lingkup, 'Browser Uji');
+    }
+
+    public function testWebsiteDenganBatasanDomainHanyaMenerimaEmailDomainItu(): void
+    {
+        $budi = $this->daftar->buat('budi@pribadi.com', 'Budi', self::SANDI);
+        (new EmailUser($this->db))->tambah($budi, 'budi@kantor.co.id');
+        $this->daftar->tambahAkses($budi, 'kantor.co.id', DaftarUser::PERAN_ANGGOTA);
+        $kantor = new Autentikasi($this->daftar, new PembatasPercobaan($this->db), $this->riwayat, new BatasanDomain(['kantor.co.id']));
+
+        // Kata sandi salah tetap "gagal" biasa, agar email tidak bisa ditebak.
+        self::assertSame(HasilMasuk::GAGAL, $kantor->masuk('budi@pribadi.com', 'salah-salah-salah', self::IP, 'kantor.co.id')->status);
+        self::assertSame(HasilMasuk::DOMAIN, $kantor->masuk('budi@pribadi.com', self::SANDI, self::IP, 'kantor.co.id')->status);
+        $terakhir = $this->riwayat->untukUser($budi)[0];
+        self::assertSame([RiwayatMasuk::DITOLAK_DOMAIN, 'budi@pribadi.com'], [$terakhir['peristiwa'], $terakhir['email']]);
+        self::assertSame('Ditolak (domain)', RiwayatMasuk::label(RiwayatMasuk::DITOLAK_DOMAIN));
+        self::assertSame(HasilMasuk::BERHASIL, $kantor->masuk('Budi@Kantor.co.id', self::SANDI, self::IP, 'kantor.co.id')->status);
+        self::assertSame('@kantor.co.id', $kantor->batasan()->teks());
+
+        // Admin super tidak dibatasi.
+        self::assertSame(HasilMasuk::BERHASIL, $kantor->masuk('admin@contoh.com', self::SANDI, self::IP, 'kantor.co.id')->status);
+    }
+
+    public function testRiwayatMencatatEmailYangDipakai(): void
+    {
+        (new EmailUser($this->db))->tambah($this->id, 'admin@kantor.co.id');
+
+        $this->masuk(email: 'Admin@Kantor.co.id');
+        $this->masuk('salah-salah-salah');
+        $this->autentikasi->masuk('tidak@terdaftar.com', 'salah-salah-salah', self::IP, 'dashboard');
+
+        $riwayat = $this->riwayat->untukUser($this->id);
+        self::assertSame(['admin@contoh.com', 'admin@kantor.co.id'], [$riwayat[0]['email'], $riwayat[1]['email']]);
+        self::assertSame([RiwayatMasuk::GAGAL, RiwayatMasuk::MASUK], [$riwayat[0]['peristiwa'], $riwayat[1]['peristiwa']]);
+
+        // Email yang tidak terdaftar tidak disimpan.
+        $baris = $this->db->query('SELECT email FROM "user_riwayat_masuk" WHERE user_id IS NULL', [])->toArray();
+        self::assertSame([['email' => '']], $baris);
+    }
+
+    public function testBatasanDomain(): void
+    {
+        $b = new BatasanDomain(['@Kantor.co.id ', 'cabang.co.id']);
+        self::assertTrue($b->cocok('ade@KANTOR.co.id'));
+        self::assertFalse($b->cocok('ade@kantor.co.id.palsu.com'));
+        self::assertFalse($b->cocok('ade@sub.kantor.co.id'));
+        self::assertSame('@kantor.co.id atau @cabang.co.id', $b->teks());
+        self::assertTrue((new BatasanDomain())->cocok('siapa@saja.com'));
+
+        $this->expectException(\RuntimeException::class);
+        BatasanDomain::dariPengaturan(['bukan domain']);
     }
 
     public function testBerhasilDanEmailTidakPekaHurufBesar(): void
