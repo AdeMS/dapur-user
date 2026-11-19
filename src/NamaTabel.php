@@ -10,7 +10,7 @@ use RuntimeException;
  * Nama tabel user, dengan awalan dari pengaturan 'awalan_tabel'.
  *
  * Tanpa awalan, tabelnya bernama user, user_akses, user_percobaan_masuk, user_riwayat_masuk,
- * user_riwayat_akun, user_pengaturan, dan user_token. Awalan hanya boleh berisi huruf, angka, dan garis bawah, karena ikut tersusun ke dalam perintah SQL.
+ * user_riwayat_akun, user_pengaturan, user_token, dan user_email. Awalan hanya boleh berisi huruf, angka, dan garis bawah, karena ikut tersusun ke dalam perintah SQL.
  */
 final class NamaTabel
 {
@@ -71,5 +71,10 @@ final class NamaTabel
     public function token(): string
     {
         return $this->awalan . 'user_token';
+    }
+
+    public function email(): string
+    {
+        return $this->awalan . 'user_email';
     }
 }
