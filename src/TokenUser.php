@@ -20,11 +20,15 @@ final class TokenUser
     public const LUPA_SANDI  = 'lupa_sandi';
     public const GANTI_EMAIL = 'ganti_email';
 
+    /** Konfirmasi email tambahan untuk akun (2.2); datanya email yang ditambahkan. */
+    public const TAMBAH_EMAIL = 'tambah_email';
+
     /** Masa berlaku token, dalam detik. */
     public const MASA_BERLAKU = [
         self::UNDANGAN    => 48 * 3600,
         self::LUPA_SANDI  => 3600,
         self::GANTI_EMAIL => 24 * 3600,
+        self::TAMBAH_EMAIL => 24 * 3600,
     ];
 
     public const PESAN_BELUM_DIPASANG = 'Tabel token belum dibuat. Jalankan "vendor/bin/dapur-user pasang" dari folder inti Dapur.';
