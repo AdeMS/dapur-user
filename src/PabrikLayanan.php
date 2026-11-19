@@ -51,6 +51,7 @@ final class PabrikLayanan
                 $c->get(DaftarUser::class),
                 $c->get(PembatasPercobaan::class),
                 $c->get(RiwayatMasuk::class),
+                $c->get(Pengaturan::class)->domainEmail,
             ),
             MulaiSesiMiddleware::class => new MulaiSesiMiddleware(Konteks::folderSesi()),
             default => throw new RuntimeException("Layanan user tidak dikenal: {$nama}"),
@@ -119,6 +120,7 @@ final class PabrikLayanan
             $c->get(SuratUser::class),
             self::namaWebsite($c),
             ProfilHandler::HALAMAN_PENGATURAN,
+            $c->get(Pengaturan::class)->domainEmail,
         );
     }
 
@@ -146,6 +148,7 @@ final class PabrikLayanan
             $c->get(TokenUser::class),
             $c->get(SuratUser::class),
             self::namaWebsite($c),
+            $c->get(Pengaturan::class)->domainEmail,
         );
     }
 
@@ -160,6 +163,7 @@ final class PabrikLayanan
             new HalamanPublik($c->get(TemplateRendererInterface::class), $pintu),
             $pintu,
             self::namaWebsite($c),
+            $c->get(Pengaturan::class)->domainEmail,
         );
     }
 
