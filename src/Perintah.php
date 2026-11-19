@@ -8,7 +8,10 @@ use Closure;
 use Laminas\Db\Adapter\Adapter;
 use Laminas\Db\Metadata\Source\Factory;
 
-/** Perintah baris: pasang, buat-admin, ganti-sandi, riwayat, daftar-akses, cabut-akses, riwayat-akun. */
+/**
+ * Perintah baris: pasang, buat-admin, ganti-sandi, riwayat, daftar-akses, cabut-akses, riwayat-akun, daftar-email,
+ * tambah-email.
+ */
 final class Perintah
 {
     /** Isi kolom perangkat di riwayat untuk kata sandi yang diganti lewat perintah ini. */
@@ -47,6 +50,8 @@ final class Perintah
             'daftar-akses' => $this->daftarAkses($utama[1] ?? null),
             'cabut-akses'  => $this->cabutAkses($utama[1] ?? ''),
             'riwayat-akun' => $this->tampilkanRiwayatAkun($utama[1] ?? null, $this->opsi($argumen, 'jumlah')),
+            'daftar-email' => $this->daftarEmail($utama[1] ?? ''),
+            'tambah-email' => $this->tambahEmail($utama[1] ?? '', $utama[2] ?? ''),
             default        => $this->bantuan(($utama[0] ?? '') === '' ? 0 : 1),
         };
     }
@@ -57,16 +62,41 @@ final class Perintah
      */
     private function pasang(): int
     {
-        $ada = Factory::createSourceFromAdapter($this->db)->getTableNames();
+        $platform = $this->db->getPlatform();
+        $metadata = Factory::createSourceFromAdapter($this->db);
+        $ada      = $metadata->getTableNames();
 
-        foreach (Skema::tabel($this->db->getPlatform()->getName(), $this->tabel) as $tabel => $sql) {
+        foreach (Skema::tabel($platform->getName(), $this->tabel) as $tabel => $sql) {
             if (in_array($tabel, $ada, true)) {
-                printf("Tabel %-28s sudah ada%s", $tabel, PHP_EOL);
+                printf("Tabel %-36s sudah ada%s", $tabel, PHP_EOL);
                 continue;
             }
 
             $this->db->query($sql, Adapter::QUERY_MODE_EXECUTE);
-            printf("Tabel %-28s dibuat%s", $tabel, PHP_EOL);
+            printf("Tabel %-36s dibuat%s", $tabel, PHP_EOL);
+        }
+
+        // Kolom yang datang di versi sesudah tabelnya dibuat; ditambahkan tanpa menyentuh data yang ada.
+        $metadata = Factory::createSourceFromAdapter($this->db);
+        foreach (Skema::kolom($platform->getName(), $this->tabel) as $tabel => $daftarKolom) {
+            $kolomAda = $metadata->getColumnNames($tabel);
+            foreach ($daftarKolom as $kolom => $definisi) {
+                if (in_array($kolom, $kolomAda, true)) {
+                    continue;
+                }
+
+                $this->db->query(
+                    'ALTER TABLE ' . $platform->quoteIdentifier($tabel) . ' ADD COLUMN '
+                    . $platform->quoteIdentifier($kolom) . ' ' . $definisi,
+                    Adapter::QUERY_MODE_EXECUTE,
+                );
+                printf("Kolom %-36s ditambahkan%s", $tabel . '.' . $kolom, PHP_EOL);
+            }
+        }
+
+        $disalin = (new EmailUser($this->db, $this->tabel))->salinEmailUtama();
+        if ($disalin > 0) {
+            printf('%sEmail utama dicatat di tabel email: %d akun.%s', PHP_EOL, $disalin, PHP_EOL);
         }
 
         $diubah = $this->user->perbaruiPeranLama();
@@ -345,9 +375,10 @@ final class Perintah
         printf('Riwayat login %s (waktu %s):%s', $user->email, $zona->getName(), PHP_EOL);
         foreach ($baris as $b) {
             printf(
-                '%s  %-11s  %-20s  %-15s  %s%s',
+                '%s  %-14s  %-30s  %-20s  %-15s  %s%s',
                 $this->waktu($b['waktu'], $zona),
                 $b['peristiwa'],
+                $b['email'] === '' ? '-' : $b['email'],
                 $b['lingkup'],
                 $b['ip'],
                 $b['perangkat'],
@@ -396,12 +427,83 @@ final class Perintah
         return 1;
     }
 
+    private function daftarEmail(string $email): int
+    {
+        $user = $this->user->cariEmail($email);
+        if ($user === null) {
+            return $this->gagal('User tidak ditemukan. Pemakaian: dapur-user daftar-email <email>');
+        }
+
+        $daftar = $this->user->email();
+        if (! $daftar->tersedia()) {
+            return $this->gagal(EmailUser::PESAN_BELUM_DIPASANG);
+        }
+
+        printf('Email akun %s:%s', $user->nama, PHP_EOL);
+        foreach ($daftar->daftar($user->id) as $e) {
+            printf('  %-40s  %s%s', $e['email'], $e['utama'] ? 'utama' : '', PHP_EOL);
+        }
+
+        $akses = array_filter(
+            $this->user->aksesUser($user->id),
+            static fn (array $a): bool => $daftar->emailIdLingkup($user->id, $a['lingkup']) !== null,
+        );
+        if ($akses !== []) {
+            echo 'Email khusus website:' . PHP_EOL;
+            foreach ($akses as $a) {
+                printf('  %-30s  %s%s', $a['lingkup'], $daftar->emailLingkup($user->id, $a['lingkup']), PHP_EOL);
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Menambahkan email ke akun tanpa tautan konfirmasi, untuk admin di terminal server (misalnya bila pengiriman
+     * email belum diatur). Pastikan email itu memang milik orang yang sama.
+     */
+    private function tambahEmail(string $email, string $emailBaru): int
+    {
+        $pemakaian = 'Pemakaian: dapur-user tambah-email <email-akun> <email-baru>';
+        $user      = $this->user->cariEmail($email);
+        if ($user === null) {
+            return $this->gagal("User tidak ditemukan. {$pemakaian}");
+        }
+
+        $emailBaru = DaftarUser::normalkanEmail($emailBaru);
+        if (filter_var($emailBaru, FILTER_VALIDATE_EMAIL) === false || strlen($emailBaru) > 190) {
+            return $this->gagal("Email baru tidak sah. {$pemakaian}");
+        }
+
+        $daftar = $this->user->email();
+        if (! $daftar->tersedia()) {
+            return $this->gagal(EmailUser::PESAN_BELUM_DIPASANG);
+        }
+
+        $pemilik = $daftar->pemilik($emailBaru);
+        if ($pemilik === $user->id) {
+            printf('%s sudah ada di akun %s.%s', $emailBaru, $user->email, PHP_EOL);
+
+            return 0;
+        }
+
+        if ($pemilik !== null) {
+            return $this->gagal("{$emailBaru} sudah dimiliki akun lain.");
+        }
+
+        $daftar->tambah($user->id, $emailBaru);
+        $this->riwayatAkun?->catat(RiwayatAkun::TAMBAH_EMAIL, null, $user->id, $this->lingkup, $emailBaru, '', self::PERANGKAT_TERMINAL);
+        printf('%s ditambahkan ke akun %s dan bisa dipakai untuk masuk.%s', $emailBaru, $user->email, PHP_EOL);
+
+        return 0;
+    }
+
     private function bantuan(int $kode): int
     {
         echo <<<BANTUAN
             Pemakaian: dapur-user <perintah>
 
-              pasang                          Membuat tabel yang belum ada dan memperbarui peran lama (aman diulang)
+              pasang                          Membuat tabel dan kolom yang belum ada, memperbarui data lama (aman diulang)
               buat-admin <email> [--nama=..]  Membuat admin super (di inti) atau admin web (dengan --website),
                                               atau menjadikan user yang sudah ada admin di lingkup ini
               ganti-sandi <email>             Mengganti kata sandi user
@@ -409,6 +511,8 @@ final class Perintah
               daftar-akses [<email>]          Menampilkan user di lingkup ini, atau semua akses satu user
               cabut-akses <email>             Mencabut akses user dari lingkup ini (akun tidak dihapus)
               riwayat-akun [<email>]          Menampilkan perubahan akun di lingkup ini, atau pada satu user
+              daftar-email <email>            Menampilkan semua email satu akun
+              tambah-email <email> <baru>     Menambahkan email ke akun tanpa tautan konfirmasi
 
             Dengan paket adems/dapur-multiwebsite, tambahkan --website=<domain> untuk website tertentu.
 
