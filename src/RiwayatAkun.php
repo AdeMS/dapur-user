@@ -25,6 +25,10 @@ final class RiwayatAkun
     public const NONAKTIFKAN = 'nonaktifkan';
     public const UNDANG      = 'undang';
     public const UBAH_EMAIL  = 'ubah_email';
+    public const TAMBAH_EMAIL  = 'tambah_email';
+    public const HAPUS_EMAIL   = 'hapus_email';
+    public const EMAIL_UTAMA   = 'email_utama';
+    public const EMAIL_WEBSITE = 'email_website';
 
     /** Label peristiwa untuk tampilan. */
     private const LABEL = [
@@ -37,6 +41,10 @@ final class RiwayatAkun
         self::NONAKTIFKAN => 'Nonaktifkan',
         self::UNDANG      => 'Undang',
         self::UBAH_EMAIL  => 'Ubah email',
+        self::TAMBAH_EMAIL  => 'Tambah email',
+        self::HAPUS_EMAIL   => 'Hapus email',
+        self::EMAIL_UTAMA   => 'Email utama',
+        self::EMAIL_WEBSITE => 'Email website',
     ];
 
     private const PANJANG_TEKS = 255;
@@ -46,14 +54,20 @@ final class RiwayatAkun
 
     private readonly string $tabel;
     private readonly string $tUser;
+    private readonly string $tAkses;
+    private readonly string $tEmail;
+    private readonly EmailUser $email;
 
     public function __construct(
         private readonly Adapter $db,
         NamaTabel $tabel = new NamaTabel(),
     ) {
-        $platform    = $db->getPlatform();
-        $this->tabel = $platform->quoteIdentifier($tabel->riwayatAkun());
-        $this->tUser = $platform->quoteIdentifier($tabel->user());
+        $platform     = $db->getPlatform();
+        $this->tabel  = $platform->quoteIdentifier($tabel->riwayatAkun());
+        $this->tUser  = $platform->quoteIdentifier($tabel->user());
+        $this->tAkses = $platform->quoteIdentifier($tabel->akses());
+        $this->tEmail = $platform->quoteIdentifier($tabel->email());
+        $this->email  = new EmailUser($db, $tabel);
     }
 
     /**
@@ -113,7 +127,7 @@ final class RiwayatAkun
      */
     public function untukLingkup(string $lingkup, int $jumlah = 20): array
     {
-        return $this->baca('r.lingkup = ?', [$lingkup], $jumlah);
+        return $this->baca('r.lingkup = ?', [$lingkup], $jumlah, true);
     }
 
     /**
@@ -140,20 +154,45 @@ final class RiwayatAkun
      * @param list<mixed> $parameter
      * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
      */
-    private function baca(string $syarat, array $parameter, int $jumlah): array
+    private function baca(string $syarat, array $parameter, int $jumlah, bool $perLingkup = false): array
     {
         $jumlah = max(1, min(500, $jumlah));
+
+        // Untuk daftar per website: pelaku dan sasaran ditampilkan dengan email yang mereka pakai di website itu,
+        // agar email pribadi tidak terlihat oleh rekan di website kantor. User yang tidak (lagi) punya akses ke
+        // website itu ditampilkan dengan namanya.
+        $perLingkup = $perLingkup && $this->email->tersedia();
+        $tambahan   = $perLingkup
+            ? ", p.nama AS pelaku_nama, s.nama AS sasaran_nama, ap.user_id AS pelaku_akses, aks.user_id AS sasaran_akses,"
+                . " ep.email AS pelaku_email_lingkup, es.email AS sasaran_email_lingkup"
+            : '';
+        $gabung     = $perLingkup
+            ? " LEFT JOIN {$this->tAkses} ap ON ap.user_id = r.pelaku_id AND ap.lingkup = r.lingkup"
+                . " LEFT JOIN {$this->tEmail} ep ON ep.id = ap.email_id AND ep.user_id = r.pelaku_id"
+                . " LEFT JOIN {$this->tAkses} aks ON aks.user_id = r.sasaran_id AND aks.lingkup = r.lingkup"
+                . " LEFT JOIN {$this->tEmail} es ON es.id = aks.email_id AND es.user_id = r.sasaran_id"
+            : '';
+
         $hasil  = $this->db->query(
-            "SELECT r.peristiwa, r.lingkup, r.keterangan, r.ip, r.perangkat, r.waktu, p.email AS pelaku, s.email AS sasaran"
+            "SELECT r.peristiwa, r.lingkup, r.keterangan, r.ip, r.perangkat, r.waktu, p.email AS pelaku, s.email AS sasaran{$tambahan}"
             . " FROM {$this->tabel} r"
             . " LEFT JOIN {$this->tUser} p ON p.id = r.pelaku_id"
-            . " JOIN {$this->tUser} s ON s.id = r.sasaran_id"
+            . " JOIN {$this->tUser} s ON s.id = r.sasaran_id{$gabung}"
             . " WHERE {$syarat} ORDER BY r.waktu DESC, r.id DESC LIMIT {$jumlah}",
             $parameter,
         );
 
         $baris = [];
         foreach ($hasil instanceof ResultSetInterface ? $hasil->toArray() : [] as $b) {
+            if ($perLingkup) {
+                $b['sasaran'] = $b['sasaran_email_lingkup']
+                    ?? ($b['sasaran_akses'] !== null ? $b['sasaran'] : $b['sasaran_nama']);
+                if ($b['pelaku'] !== null) {
+                    $b['pelaku'] = $b['pelaku_email_lingkup']
+                        ?? ($b['pelaku_akses'] !== null ? $b['pelaku'] : $b['pelaku_nama']);
+                }
+            }
+
             $baris[] = [
                 'peristiwa'  => (string) $b['peristiwa'],
                 'lingkup'    => (string) $b['lingkup'],
