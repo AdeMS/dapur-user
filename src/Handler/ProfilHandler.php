@@ -6,6 +6,7 @@ namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\Email\GagalKirim;
 use AdeMS\Dapur\User\AturanKataSandi;
+use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PembatasPercobaan;
@@ -69,7 +70,7 @@ final class ProfilHandler implements RequestHandlerInterface
     /** Aksi form yang diterima tiap halaman. Halaman Profil hanya untuk dibaca. */
     private const AKSI = [
         self::HALAMAN_PROFIL     => [],
-        self::HALAMAN_PENGATURAN => ['nama', 'sandi', 'email'],
+        self::HALAMAN_PENGATURAN => ['nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website'],
     ];
 
     /** Tautan lama ke tab halaman profil (sebelum ada Pengaturan & Privasi) => tab tujuannya. */
@@ -96,6 +97,7 @@ final class ProfilHandler implements RequestHandlerInterface
         private readonly ?SuratUser $surat = null,
         private readonly string $namaWebsite = 'Dapur AdeMS',
         private readonly string $jenis = self::HALAMAN_PROFIL,
+        private readonly BatasanDomain $domain = new BatasanDomain(),
     ) {
         if (! isset(self::AKSI[$jenis])) {
             throw new \InvalidArgumentException("Jenis halaman tidak dikenal: {$jenis}");
@@ -150,6 +152,10 @@ final class ProfilHandler implements RequestHandlerInterface
             'nama'  => $this->gantiNama($request, $user, $sesi, $isi),
             'sandi' => $this->gantiSandi($request, $user, $sesi, $isi),
             'email' => $this->gantiEmail($request, $user, $sesi, $isi),
+            'tambah_email' => $this->gantiEmail($request, $user, $sesi, $isi, true),
+            'utama_email'  => $this->jadikanEmailUtama($request, $user, $sesi, $isi),
+            'hapus_email'  => $this->hapusEmail($request, $user, $sesi, $isi),
+            'email_website' => $this->pilihEmailWebsite($request, $user, $sesi, $isi),
             default => $this->galat($request, $user, null, 'Permintaan tidak dikenal.', 400),
         };
     }
@@ -223,7 +229,7 @@ final class ProfilHandler implements RequestHandlerInterface
 
         $this->daftar->gantiSandi($user->id, $baru);
         $this->pembatas->bersihkan($user->email, $ip);
-        $this->riwayat->catat(RiwayatMasuk::GANTI_SANDI, $user->id, $this->pintu->lingkup, $ip, $request->getHeaderLine('User-Agent'));
+        $this->riwayat->catat(RiwayatMasuk::GANTI_SANDI, $user->id, $this->pintu->lingkup, $ip, $request->getHeaderLine('User-Agent'), KeluarHandler::emailSesi($sesi));
 
         // Session ini tetap login dengan sidik jari kata sandi yang baru; session lain tidak berlaku lagi.
         $baruUser = $this->daftar->cariId($user->id) ?? $user;
@@ -241,10 +247,12 @@ final class ProfilHandler implements RequestHandlerInterface
      *
      * @param array<mixed> $isi
      */
-    private function gantiEmail(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    private function gantiEmail(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi, bool $tambah = false): ResponseInterface
     {
-        if (! $this->bisaGantiEmail()) {
-            return $this->galat($request, $user, 'email', 'Email belum bisa diubah karena pengiriman email belum diaktifkan.', 503);
+        // Form ganti email utama dan tambah email memakai isian yang sama; bedanya jenis tautan konfirmasi.
+        $bagianForm = $tambah ? 'tambah_email' : 'email';
+        if (! $this->bisaGantiEmail() || ($tambah && ! $this->daftar->email()->tersedia())) {
+            return $this->galat($request, $user, $bagianForm, 'Email belum bisa diubah karena pengiriman email belum diaktifkan.', 503);
         }
 
         assert($this->token !== null && $this->surat !== null);
@@ -254,37 +262,45 @@ final class ProfilHandler implements RequestHandlerInterface
         $form  = ['emailBaru' => $baru];
 
         if ($this->pembatas->terkunci($user->email, $ip)) {
-            return $this->galat($request, $user, 'email', 'Terlalu banyak percobaan. Silakan coba lagi nanti.', 429, $form);
+            return $this->galat($request, $user, $bagianForm, 'Terlalu banyak percobaan. Silakan coba lagi nanti.', 429, $form);
         }
 
         if ($sandi === '' || strlen($sandi) > self::PANJANG_SANDI_MAKS || ! password_verify($sandi, $user->kataSandi)) {
             $this->pembatas->catat($user->email, $ip);
 
-            return $this->galat($request, $user, 'email', 'Kata sandi salah.', 422, $form);
+            return $this->galat($request, $user, $bagianForm, 'Kata sandi salah.', 422, $form);
         }
 
         if (filter_var($baru, FILTER_VALIDATE_EMAIL) === false || strlen($baru) > 190) {
-            return $this->galat($request, $user, 'email', 'Email baru tidak sah.', 422, $form);
+            return $this->galat($request, $user, $bagianForm, 'Email baru tidak sah.', 422, $form);
         }
 
-        if ($baru === $user->email) {
-            return $this->galat($request, $user, 'email', 'Email baru sama dengan email sekarang.', 422, $form);
+        $pemilik = $this->daftar->cariEmail($baru);
+        if ($baru === $user->email || ($tambah && $pemilik?->id === $user->id)) {
+            return $this->galat($request, $user, $bagianForm, $tambah ? "{$baru} sudah ada di akun Anda." : 'Email baru sama dengan email sekarang.', 422, $form);
         }
 
-        if ($this->daftar->cariEmail($baru) !== null) {
-            return $this->galat($request, $user, 'email', "{$baru} sudah dipakai akun lain.", 422, $form);
+        if ($pemilik !== null && $pemilik->id !== $user->id) {
+            return $this->galat($request, $user, $bagianForm, "{$baru} sudah dipakai akun lain.", 422, $form);
         }
 
-        $token = $this->token->buat($user->id, TokenUser::GANTI_EMAIL, $baru);
+        $token = $this->token->buat($user->id, $tambah ? TokenUser::TAMBAH_EMAIL : TokenUser::GANTI_EMAIL, $baru);
         try {
             $this->surat->kirimVerifikasiEmail(
                 $user,
                 $baru,
                 $this->surat->alamatLengkap($request, $this->pintu->alamatVerifikasiEmail(), ['token' => $token]),
                 $this->namaWebsite,
+                $tambah,
             );
         } catch (GagalKirim $e) {
-            return $this->galat($request, $user, 'email', 'Email verifikasi gagal dikirim: ' . $e->getMessage(), 502, $form);
+            return $this->galat($request, $user, $bagianForm, 'Email verifikasi gagal dikirim: ' . $e->getMessage(), 502, $form);
+        }
+
+        if ($tambah) {
+            $sesi->simpan(self::SESI_PESAN, "Tautan konfirmasi sudah dikirim ke {$baru}. Email itu ditambahkan ke akun Anda setelah tautannya dibuka.");
+
+            return new RedirectResponse($this->alamatPengaturan('akun'));
         }
 
         try {
@@ -310,6 +326,95 @@ final class ProfilHandler implements RequestHandlerInterface
     private function alamatPengaturan(string $tab): string
     {
         return $this->pintu->alamatPengaturan() . '?tab=' . rawurlencode($tab);
+    }
+
+    /** @param array<mixed> $isi */
+    private function jadikanEmailUtama(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $email = $this->daftar->email();
+        $id    = $this->emailId($isi);
+        $baru  = $id === null || ! $email->tersedia() ? null : $email->milik($user->id, $id);
+        if ($baru === null) {
+            return $this->galat($request, $user, 'email_saya', 'Email tidak ditemukan di akun Anda.', 404);
+        }
+
+        if ($baru !== $user->email) {
+            $email->jadikanUtama($user->id, $id);
+            $this->catatAkun($request, $user, RiwayatAkun::EMAIL_UTAMA, $user->email . ' → ' . $baru);
+        }
+
+        $sesi->simpan(self::SESI_PESAN, "Email utama sekarang {$baru}.");
+
+        return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /** @param array<mixed> $isi */
+    private function hapusEmail(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $email   = $this->daftar->email();
+        $id      = $this->emailId($isi);
+        $dihapus = $id === null || ! $email->tersedia() ? null : $email->hapus($user->id, $id);
+        if ($dihapus === null) {
+            return $this->galat($request, $user, 'email_saya', 'Email utama tidak bisa dihapus. Jadikan email lain sebagai email utama lebih dulu.', 422);
+        }
+
+        $this->catatAkun($request, $user, RiwayatAkun::HAPUS_EMAIL, $dihapus);
+        $sesi->simpan(self::SESI_PESAN, "{$dihapus} sudah dihapus dari akun Anda.");
+
+        return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /**
+     * Memilih email yang dipakai di website ini (yang dilihat rekan dan dipakai untuk email dari website ini).
+     *
+     * @param array<mixed> $isi
+     */
+    private function pilihEmailWebsite(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $email   = $this->daftar->email();
+        $lingkup = $this->pintu->lingkup;
+        if (! $email->tersedia() || ! $this->daftar->punyaAkses($user->id, $lingkup)) {
+            return $this->galat($request, $user, 'email_saya', 'Email untuk website ini tidak bisa dipilih.', 422);
+        }
+
+        $id      = $this->emailId($isi);
+        $dipilih = $id === null ? $user->email : $email->milik($user->id, $id);
+        if ($dipilih === null) {
+            return $this->galat($request, $user, 'email_saya', 'Email tidak ditemukan di akun Anda.', 404);
+        }
+
+        $adminSuper = $this->daftar->peran($user->id, $lingkup) === DaftarUser::PERAN_ADMIN_SUPER;
+        if (! $this->domain->cocok($dipilih) && ! $adminSuper) {
+            return $this->galat($request, $user, 'email_saya', 'Website ini hanya menerima email ' . $this->domain->teks() . '.', 422);
+        }
+
+        // Email utama disimpan sebagai "kosong", agar tetap mengikuti bila email utama nanti diganti.
+        $email->aturEmailLingkup($user->id, $lingkup, $dipilih === $user->email ? null : $id);
+        $this->catatAkun($request, $user, RiwayatAkun::EMAIL_WEBSITE, $dipilih);
+        $sesi->simpan(self::SESI_PESAN, "Email untuk website ini sekarang {$dipilih}.");
+
+        return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /** @param array<mixed> $isi */
+    private function emailId(array $isi): ?int
+    {
+        $id = $isi['email_id'] ?? null;
+
+        return is_string($id) && ctype_digit($id) && $id !== '0' ? (int) $id : null;
+    }
+
+    private function catatAkun(ServerRequestInterface $request, User $user, string $peristiwa, string $keterangan): void
+    {
+        $this->riwayatAkun?->catat(
+            $peristiwa,
+            $user->id,
+            $user->id,
+            $this->pintu->lingkup,
+            $keterangan,
+            (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
+            $request->getHeaderLine('User-Agent'),
+        );
     }
 
     private function bisaGantiEmail(): bool
@@ -371,7 +476,34 @@ final class ProfilHandler implements RequestHandlerInterface
             'aktivitas'    => $aktivitas,
             'aktivitasLagi' => $aktivitasLagi,
             'alamatBeranda' => $this->pintu->alamatDasar === '' ? '/' : $this->pintu->alamatDasar,
-        ], $status);
+        ] + ($profil ? [] : $this->dataEmail($user)), $status);
+    }
+
+    /**
+     * Data bagian "Email saya": email milik akun, dan email yang dipakai di website ini.
+     *
+     * @return array<string, mixed>
+     */
+    private function dataEmail(User $user): array
+    {
+        $email   = $this->daftar->email();
+        $lingkup = $this->pintu->lingkup;
+        if (! $email->tersedia()) {
+            return ['daftarEmail' => [], 'emailWebsiteId' => null, 'bisaPilihEmailWebsite' => false, 'domainEmail' => ''];
+        }
+
+        $adminSuper = $this->daftar->peran($user->id, $lingkup) === DaftarUser::PERAN_ADMIN_SUPER;
+        $daftar     = array_map(fn (array $e): array => $e + [
+            // Di website yang mewajibkan email kantor, hanya email domain itu yang bisa dipilih untuk website ini.
+            'bisaDipilih' => $adminSuper || $this->domain->cocok($e['email']),
+        ], $email->daftar($user->id));
+
+        return [
+            'daftarEmail'           => $daftar,
+            'emailWebsiteId'        => $email->emailIdLingkup($user->id, $lingkup),
+            'bisaPilihEmailWebsite' => $this->daftar->punyaAkses($user->id, $lingkup) && count($daftar) > 1,
+            'domainEmail'           => $this->domain->teks(),
+        ];
     }
 
     /** @return array{nilai: string, label: string}|null peran user di lingkup ini */
@@ -435,7 +567,7 @@ final class ProfilHandler implements RequestHandlerInterface
         return $baris;
     }
 
-    /** @return list<array{waktu: string, peristiwa: string, label: string, lingkup: string, ip: string, perangkat: string, perangkatLengkap: string}> */
+    /** @return list<array{waktu: string, peristiwa: string, label: string, email: string, lingkup: string, ip: string, perangkat: string, perangkatLengkap: string}> */
     private function riwayat(User $user, int $jumlah): array
     {
         $utc   = new DateTimeZone('UTC');
@@ -449,6 +581,7 @@ final class ProfilHandler implements RequestHandlerInterface
                 'ip'               => $b['ip'],
                 'perangkat'        => Perangkat::ringkas($b['perangkat']),
                 'perangkatLengkap' => $b['perangkat'],
+                'email'            => $b['email'],
             ];
         }
 
