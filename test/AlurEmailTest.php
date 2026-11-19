@@ -8,6 +8,7 @@ use AdeMS\Dapur\Email\GagalKirim;
 use AdeMS\Dapur\Email\PengirimEmail;
 use AdeMS\Dapur\Email\Pesan;
 use AdeMS\Dapur\Email\SuratTemplat;
+use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\Handler\AturSandiHandler;
 use AdeMS\Dapur\User\Handler\HalamanPublik;
@@ -343,5 +344,124 @@ final class AlurEmailTest extends TestCase
 
         $tetap = new SuratUser($this->pengirim, new SuratTemplat(new RendererEmailUji()), 'https://dapur.contoh.com');
         self::assertSame('https://dapur.contoh.com/atur-sandi', $tetap->alamatLengkap($request, '/atur-sandi'));
+    }
+
+    public function testTambahEmailLewatKonfirmasi(): void
+    {
+        $tambah = fn (string $email, string $sandi = self::SANDI) => $this->profil()->handle(
+            $this->permintaan('POST', '/pengaturan', ['aksi' => 'tambah_email', 'email_baru' => $email, 'sandi_sekarang' => $sandi], $this->budi),
+        );
+
+        self::assertSame(422, $tambah('admin@contoh.com')->getStatusCode(), 'Email akun lain ditolak.');
+        self::assertSame('tambah_email', $this->renderer->data['galatBagian']);
+        self::assertSame(422, $tambah('budi@contoh.com')->getStatusCode(), 'Email sendiri ditolak.');
+        self::assertSame(422, $tambah('budi@kantor.co.id', 'salah')->getStatusCode());
+        self::assertSame([], $this->pengirim->terkirim);
+
+        self::assertSame(302, $tambah('Budi@Kantor.co.id')->getStatusCode());
+        self::assertCount(1, $this->pengirim->terkirim, 'Tanpa pemberitahuan ke email utama, karena email utama tidak berubah.');
+        self::assertSame('budi@kantor.co.id', $this->pengirim->terkirim[0]->kepada);
+        self::assertNull($this->daftar->cariEmail('budi@kantor.co.id'), 'Belum bisa dipakai sebelum dikonfirmasi.');
+
+        $token = $this->tokenTerakhir();
+        self::assertSame(200, $this->verifikasi()->handle($this->permintaan('GET', '/verifikasi-email', ['token' => $token]))->getStatusCode());
+        self::assertTrue($this->renderer->data['tambah']);
+
+        $hasil = $this->verifikasi()->handle($this->permintaan('POST', '/verifikasi-email', ['token' => $token]));
+        self::assertSame('/pengaturan?tab=akun', $hasil->getHeaderLine('Location'));
+        self::assertSame($this->budi, $this->daftar->cariEmail('budi@kantor.co.id')?->id);
+        self::assertSame('budi@contoh.com', $this->daftar->cariId($this->budi)?->email, 'Email utama tidak berubah.');
+        self::assertSame(RiwayatAkun::TAMBAH_EMAIL, (new RiwayatAkun($this->db))->untukUser($this->budi)[0]['peristiwa']);
+        self::assertSame(410, $this->verifikasi()->handle($this->permintaan('POST', '/verifikasi-email', ['token' => $token]))->getStatusCode());
+    }
+
+    public function testJadikanUtamaDanHapusEmail(): void
+    {
+        $email  = $this->daftar->email();
+        $kantor = $email->tambah($this->budi, 'budi@kantor.co.id');
+        $lama   = (int) $email->id($this->budi, 'budi@contoh.com');
+        $kirim  = fn (string $aksi, int $id) => $this->profil()->handle(
+            $this->permintaan('POST', '/pengaturan', ['aksi' => $aksi, 'email_id' => (string) $id], $this->budi),
+        );
+
+        self::assertSame(422, $kirim('hapus_email', $lama)->getStatusCode(), 'Email utama tidak bisa dihapus.');
+        self::assertSame('email_saya', $this->renderer->data['galatBagian']);
+
+        self::assertSame(302, $kirim('utama_email', $kantor)->getStatusCode());
+        self::assertSame('budi@kantor.co.id', $this->daftar->cariId($this->budi)?->email);
+
+        self::assertSame(302, $kirim('hapus_email', $lama)->getStatusCode());
+        self::assertNull($this->daftar->cariEmail('budi@contoh.com'));
+
+        $adminEmail = (int) $email->id($this->admin, 'admin@contoh.com');
+        self::assertSame(404, $kirim('utama_email', $adminEmail)->getStatusCode(), 'Email akun lain tidak bisa disentuh.');
+        self::assertSame(422, $kirim('hapus_email', $adminEmail)->getStatusCode());
+        self::assertSame('admin@contoh.com', $this->daftar->cariId($this->admin)?->email);
+
+        $peristiwa = array_column((new RiwayatAkun($this->db))->untukUser($this->budi), 'peristiwa');
+        self::assertSame([RiwayatAkun::HAPUS_EMAIL, RiwayatAkun::EMAIL_UTAMA], $peristiwa);
+
+        // Data halaman: daftar email dengan email utama lebih dulu.
+        $this->profil()->handle($this->permintaan('GET', '/pengaturan', [], $this->budi));
+        self::assertSame(['budi@kantor.co.id'], array_column($this->renderer->data['daftarEmail'], 'email'));
+    }
+
+    public function testWebsiteKantorMewajibkanEmailKantor(): void
+    {
+        $kantor = new Pintu('kantor.co.id', '/dashboard', 3600, 'layout::uji');
+        $domain = new BatasanDomain(['kantor.co.id']);
+        $email  = $this->daftar->email();
+        $idKantor = $email->tambah($this->budi, 'budi@kantor.co.id');
+
+        // Kelola user: hanya email kantor; email kantor milik akun yang ada -> akun itu diberi akses.
+        $kelola = new KelolaUserHandler(
+            $this->daftar, new RiwayatAkun($this->db), new PenyajiDasar($this->renderer, $kantor), $kantor,
+            new DateTimeZone('Asia/Jakarta'), false, KelolaUserHandler::TEMPLATE, $this->token, $this->surat, 'Kantor', $domain,
+        );
+        $tambah = fn (string $alamat) => $kelola->handle($this->permintaan(
+            'POST', '/dashboard/user', ['aksi' => 'tambah', 'email' => $alamat, 'nama' => 'Siapa', 'peran' => DaftarUser::PERAN_ANGGOTA], $this->admin,
+        ));
+        self::assertSame(422, $tambah('budi@contoh.com')->getStatusCode());
+        self::assertStringContainsString('@kantor.co.id', (string) $this->renderer->data['galat']);
+        self::assertSame(302, $tambah('budi@kantor.co.id')->getStatusCode());
+        self::assertSame('budi@kantor.co.id sudah terdaftar; akses sebagai anggota ditambahkan.', $this->sesi->ambil(ProfilHandler::SESI_PESAN));
+        self::assertSame('budi@kantor.co.id', $email->emailLingkup($this->budi, 'kantor.co.id'));
+        // Rekan di website kantor melihat email kantor Budi (admin super tampil otomatis dengan email utamanya).
+        self::assertSame(['admin@contoh.com', 'budi@kantor.co.id'], array_column($this->daftar->userDiLingkup('kantor.co.id'), 'email'));
+
+        // Email untuk website ini: email pribadi ditolak, email kantor diterima.
+        $profil = new ProfilHandler(
+            $this->daftar, new PembatasPercobaan($this->db), new RiwayatMasuk($this->db), new PenyajiDasar($this->renderer, $kantor),
+            $kantor, new DateTimeZone('Asia/Jakarta'), ProfilHandler::TEMPLATE_PENGATURAN, new RiwayatAkun($this->db),
+            $this->token, $this->surat, 'Kantor', ProfilHandler::HALAMAN_PENGATURAN, $domain,
+        );
+        $pilih = fn (string $id) => $profil->handle($this->permintaan('POST', '/dashboard/pengaturan', ['aksi' => 'email_website', 'email_id' => $id], $this->budi));
+        $idPribadi = (string) $email->id($this->budi, 'budi@contoh.com');
+        self::assertSame(422, $pilih($idPribadi)->getStatusCode());
+        self::assertSame('budi@kantor.co.id', $email->emailLingkup($this->budi, 'kantor.co.id'));
+        self::assertSame(302, $pilih((string) $idKantor)->getStatusCode());
+
+        $profil->handle($this->permintaan('GET', '/dashboard/pengaturan', [], $this->budi));
+        self::assertTrue($this->renderer->data['bisaPilihEmailWebsite']);
+        self::assertSame($idKantor, $this->renderer->data['emailWebsiteId']);
+        self::assertSame([false, true], array_column($this->renderer->data['daftarEmail'], 'bisaDipilih'));
+        self::assertSame('@kantor.co.id', $this->renderer->data['domainEmail']);
+
+        // Lupa kata sandi di website kantor: email pribadi tidak dikirimi, email kantor dikirimi ke alamat itu.
+        $lupa = new LupaSandiHandler($this->daftar, $this->token, $this->surat, new PembatasPercobaan($this->db), new HalamanPublik($this->renderer, $kantor), $kantor, 'Kantor', $domain);
+        $lupa->handle($this->permintaan('POST', '/dashboard/lupa-sandi', ['email' => 'budi@contoh.com']));
+        self::assertTrue($this->renderer->data['terkirim']);
+        self::assertSame([], $this->pengirim->terkirim);
+        $lupa->handle($this->permintaan('POST', '/dashboard/lupa-sandi', ['email' => 'budi@kantor.co.id']));
+        self::assertSame('budi@kantor.co.id', $this->pengirim->terkirim[0]->kepada);
+    }
+
+    public function testLupaSandiLewatEmailTambahanDikirimKeEmailItu(): void
+    {
+        $this->daftar->email()->tambah($this->budi, 'budi@lain.com');
+
+        $this->lupa()->handle($this->permintaan('POST', '/lupa-sandi', ['email' => 'budi@lain.com']));
+
+        self::assertSame('budi@lain.com', $this->pengirim->terkirim[0]->kepada);
     }
 }
