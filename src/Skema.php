@@ -31,6 +31,30 @@ final class Skema
         };
     }
 
+    /**
+     * Kolom yang ditambahkan sesudah tabelnya pertama kali dibuat. Perintah pasang menambahkan kolom yang belum
+     * ada lewat ALTER TABLE, sehingga instalasi lama ikut lengkap tanpa kehilangan data. Kolom baru selalu boleh
+     * kosong (NULL) atau punya nilai bawaan, dan tidak pernah dihapus atau diubah.
+     *
+     * @return array<string, array<string, string>> nama tabel => [nama kolom => definisi kolom]
+     */
+    public static function kolom(string $platform, NamaTabel $tabel = new NamaTabel()): array
+    {
+        return match ($platform) {
+            'MySQL'  => [
+                // 2.2: email yang dipakai user di lingkup ini; kosong berarti email utama.
+                $tabel->akses()   => ['email_id' => 'BIGINT UNSIGNED NULL'],
+                // 2.2: email yang dipakai untuk login (akun bisa punya beberapa email).
+                $tabel->riwayat() => ['email' => "VARCHAR(190) NOT NULL DEFAULT ''"],
+            ],
+            'SQLite' => [
+                $tabel->akses()   => ['email_id' => 'INTEGER NULL'],
+                $tabel->riwayat() => ['email' => "TEXT NOT NULL DEFAULT ''"],
+            ],
+            default  => throw new RuntimeException("Modul user belum mendukung database {$platform}."),
+        };
+    }
+
     /** @return array<string, string> */
     private static function mysql(NamaTabel $t): array
     {
@@ -53,6 +77,7 @@ final class Skema
                 user_id BIGINT UNSIGNED NOT NULL,
                 lingkup VARCHAR(190) NOT NULL,
                 peran VARCHAR(50) NOT NULL,
+                email_id BIGINT UNSIGNED NULL,
                 PRIMARY KEY (user_id, lingkup),
                 CONSTRAINT {$q("fk_{$a}user_akses_user")} FOREIGN KEY (user_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
@@ -74,6 +99,7 @@ final class Skema
                 ip VARCHAR(45) NOT NULL,
                 perangkat VARCHAR(255) NOT NULL DEFAULT '',
                 waktu DATETIME NOT NULL,
+                email VARCHAR(190) NOT NULL DEFAULT '',
                 KEY {$q("idx_{$a}user_riwayat_user")} (user_id, waktu),
                 KEY {$q("idx_{$a}user_riwayat_waktu")} (waktu),
                 CONSTRAINT {$q("fk_{$a}user_riwayat_user")} FOREIGN KEY (user_id)
@@ -118,6 +144,17 @@ final class Skema
                 CONSTRAINT {$q("fk_{$a}user_pengaturan_user")} FOREIGN KEY (user_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
             ) {$opsi}",
+            $t->email() => "CREATE TABLE IF NOT EXISTS {$q($t->email())} (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT UNSIGNED NOT NULL,
+                email VARCHAR(190) NOT NULL,
+                terverifikasi DATETIME NOT NULL,
+                dibuat_pada DATETIME NOT NULL,
+                UNIQUE KEY {$q("uq_{$a}user_email_email")} (email),
+                KEY {$q("idx_{$a}user_email_user")} (user_id),
+                CONSTRAINT {$q("fk_{$a}user_email_user")} FOREIGN KEY (user_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
+            ) {$opsi}",
         ];
     }
 
@@ -140,6 +177,7 @@ final class Skema
                 user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
                 lingkup TEXT NOT NULL,
                 peran TEXT NOT NULL,
+                email_id INTEGER NULL,
                 PRIMARY KEY (user_id, lingkup)
             )",
             $t->percobaan() => "CREATE TABLE IF NOT EXISTS {$q($t->percobaan())} (
@@ -155,7 +193,8 @@ final class Skema
                 peristiwa TEXT NOT NULL,
                 ip TEXT NOT NULL,
                 perangkat TEXT NOT NULL DEFAULT '',
-                waktu TEXT NOT NULL
+                waktu TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT ''
             )",
             $t->riwayatAkun() => "CREATE TABLE IF NOT EXISTS {$q($t->riwayatAkun())} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,6 +222,13 @@ final class Skema
                 kunci TEXT NOT NULL,
                 nilai TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (user_id, kunci)
+            )",
+            $t->email() => "CREATE TABLE IF NOT EXISTS {$q($t->email())} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
+                email TEXT NOT NULL UNIQUE,
+                terverifikasi TEXT NOT NULL,
+                dibuat_pada TEXT NOT NULL
             )",
         ];
     }
