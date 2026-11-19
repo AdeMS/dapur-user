@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\Email\GagalKirim;
+use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\KataSandiSementara;
 use AdeMS\Dapur\User\Konteks;
@@ -62,6 +63,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
         private readonly ?TokenUser $token = null,
         private readonly ?SuratUser $surat = null,
         private readonly string $namaWebsite = 'Dapur AdeMS',
+        private readonly BatasanDomain $domain = new BatasanDomain(),
     ) {
     }
 
@@ -129,22 +131,28 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Peran tidak dikenal.', 422, $form);
         }
 
+        if (! $this->domain->cocok($email)) {
+            return $this->galat($request, $admin, 'Website ini hanya menerima email ' . $this->domain->teks() . '.', 422, $form);
+        }
+
+        // Email bisa milik akun yang sudah ada, termasuk sebagai email tambahannya. Pesan memakai email yang
+        // diketik admin, bukan email utama akun itu, agar email pribadi tidak terlihat di website lain.
         $ada = $this->daftar->cariEmail($email);
         if ($ada !== null) {
             $sekarang = $this->daftar->peran($ada->id, $this->pintu->lingkup);
             if ($sekarang === DaftarUser::PERAN_ADMIN_SUPER) {
-                return $this->galat($request, $admin, "{$ada->email} adalah admin super dan sudah menjadi admin di sini.", 422, $form);
+                return $this->galat($request, $admin, "{$email} adalah admin super dan sudah menjadi admin di sini.", 422, $form);
             }
 
             if ($sekarang !== null) {
-                return $this->galat($request, $admin, "{$ada->email} sudah punya akses di sini.", 422, $form);
+                return $this->galat($request, $admin, "{$email} sudah punya akses di sini.", 422, $form);
             }
 
-            $this->daftar->tambahAkses($ada->id, $this->pintu->lingkup, $peran);
+            $this->daftar->tambahAkses($ada->id, $this->pintu->lingkup, $peran, $email);
             $this->catat($request, RiwayatAkun::BERI_AKSES, $admin, $ada->id, "peran {$peran}");
             $sesi->simpan(ProfilHandler::SESI_PESAN, sprintf(
                 '%s sudah terdaftar; akses sebagai %s ditambahkan.%s',
-                $ada->email,
+                $email,
                 strtolower(DaftarUser::label($peran)),
                 $ada->aktif ? '' : ' Akun ini sedang nonaktif.',
             ));
@@ -208,12 +216,12 @@ final class KelolaUserHandler implements RequestHandlerInterface
         }
 
         if ($this->adminSuperTerakhir($lama)) {
-            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
+            return $this->galat($request, $admin, "{$this->emailDi($target)} adalah admin super terakhir.", 422);
         }
 
         $this->daftar->ubahPeran($target->id, $this->pintu->lingkup, $baru);
         $this->catat($request, RiwayatAkun::UBAH_PERAN, $admin, $target->id, "{$lama} → {$baru}");
-        $sesi->simpan(ProfilHandler::SESI_PESAN, sprintf('Peran %s sekarang %s.', $target->email, strtolower(DaftarUser::label($baru))));
+        $sesi->simpan(ProfilHandler::SESI_PESAN, sprintf('Peran %s sekarang %s.', $this->emailDi($target), strtolower(DaftarUser::label($baru))));
 
         return new RedirectResponse($this->pintu->alamatKelolaUser());
     }
@@ -232,12 +240,14 @@ final class KelolaUserHandler implements RequestHandlerInterface
         }
 
         if ($this->adminSuperTerakhir($peran)) {
-            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
+            return $this->galat($request, $admin, "{$this->emailDi($target)} adalah admin super terakhir.", 422);
         }
 
+        // Email website ini diambil sebelum aksesnya dicabut (sesudahnya yang tersisa hanya email utama).
+        $emailDi = $this->emailDi($target);
         $this->daftar->cabutAkses($target->id, $this->pintu->lingkup);
         $this->catat($request, RiwayatAkun::CABUT_AKSES, $admin, $target->id, "peran {$peran}");
-        $sesi->simpan(ProfilHandler::SESI_PESAN, "Akses {$target->email} dicabut. Akunnya tidak dihapus.");
+        $sesi->simpan(ProfilHandler::SESI_PESAN, "Akses {$emailDi} dicabut. Akunnya tidak dihapus.");
 
         return new RedirectResponse($this->pintu->alamatKelolaUser());
     }
@@ -261,7 +271,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
 
         if ($this->daftar->adalahAdminSuper($target->id) && ($isi['nilai'] ?? null) !== '1'
             && $this->daftar->jumlahAdminSuper() <= 1) {
-            return $this->galat($request, $admin, "{$target->email} adalah admin super terakhir.", 422);
+            return $this->galat($request, $admin, "{$this->emailDi($target)} adalah admin super terakhir.", 422);
         }
 
         $aktif = ($isi['nilai'] ?? null) === '1';
@@ -271,8 +281,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
         }
 
         $sesi->simpan(ProfilHandler::SESI_PESAN, $aktif
-            ? "Akun {$target->email} aktif kembali."
-            : "Akun {$target->email} dinonaktifkan dan tidak bisa login di mana pun.");
+            ? "Akun {$this->emailDi($target)} aktif kembali."
+            : "Akun {$this->emailDi($target)} dinonaktifkan dan tidak bisa login di mana pun.");
 
         return new RedirectResponse($this->pintu->alamatKelolaUser());
     }
@@ -304,7 +314,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, "Undangan gagal dikirim: {$gagal}", 502);
         }
 
-        $sesi->simpan(ProfilHandler::SESI_PESAN, "Undangan dikirim ulang ke {$target->email}.");
+        $sesi->simpan(ProfilHandler::SESI_PESAN, "Undangan dikirim ulang ke {$this->emailDi($target)}.");
 
         return new RedirectResponse($this->pintu->alamatKelolaUser());
     }
@@ -313,13 +323,15 @@ final class KelolaUserHandler implements RequestHandlerInterface
     private function kirimUndangan(ServerRequestInterface $request, User $admin, User $user): ?string
     {
         assert($this->token !== null && $this->surat !== null);
-        $token = $this->token->buat($user->id, TokenUser::UNDANGAN);
+        // Email tujuan disimpan di token, agar riwayat login mencatat email yang dipakai saat kata sandi dibuat.
+        $token = $this->token->buat($user->id, TokenUser::UNDANGAN, $this->emailDi($user));
         try {
             $this->surat->kirimUndangan(
                 $user,
                 $this->surat->alamatLengkap($request, $this->pintu->alamatAturSandi(), ['token' => $token]),
                 $admin->nama,
                 $this->namaWebsite,
+                $this->emailDi($user),
             );
         } catch (GagalKirim $e) {
             return $e->getMessage();
@@ -330,7 +342,15 @@ final class KelolaUserHandler implements RequestHandlerInterface
         return null;
     }
 
-    private function bisaUndang(): bool
+    /** Email user yang dipakai di website ini (email pilihannya untuk website ini, atau email utama). */
+    private function emailDi(User $user): string
+    {
+        $email = $this->daftar->email();
+
+        return $email->tersedia() ? $email->emailLingkup($user->id, $this->pintu->lingkup) : $user->email;
+    }
+
+        private function bisaUndang(): bool
     {
         return $this->token !== null && $this->surat !== null && $this->surat->aktif() && $this->token->tersedia();
     }
