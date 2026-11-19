@@ -17,7 +17,14 @@ final class Autentikasi
         private readonly DaftarUser $user,
         private readonly PembatasPercobaan $pembatas,
         private readonly ?RiwayatMasuk $riwayat = null,
+        private readonly BatasanDomain $domain = new BatasanDomain(),
     ) {
+    }
+
+    /** Batasan domain email website ini. */
+    public function batasan(): BatasanDomain
+    {
+        return $this->domain;
     }
 
     /** @param string $perangkat user agent browser, untuk riwayat login */
@@ -38,9 +45,18 @@ final class Autentikasi
         // Semua penyebab gagal diperlakukan sama, agar keberadaan akun tidak bisa ditebak.
         if ($user === null || ! $cocok || ! $user->aktif || $this->user->peran($user->id, $lingkup) === null) {
             $this->pembatas->catat($email, $ip);
-            $this->riwayat?->catat(RiwayatMasuk::GAGAL, $user?->id, $lingkup, $ip, $perangkat);
+            $this->riwayat?->catat(RiwayatMasuk::GAGAL, $user?->id, $lingkup, $ip, $perangkat, $email);
 
             return new HasilMasuk(HasilMasuk::GAGAL);
+        }
+
+        // Website yang mewajibkan email kantor: email lain dari akun yang sama ditolak di sini. Pesannya baru
+        // diberikan sesudah kata sandi benar, agar tidak bisa dipakai menebak email. Admin super tidak dibatasi.
+        if (! $this->domain->cocok($email) && $this->user->peran($user->id, $lingkup) !== DaftarUser::PERAN_ADMIN_SUPER) {
+            // Dicatat terpisah dari "gagal", agar pemilik akun tahu kata sandinya benar dan hanya emailnya yang ditolak.
+            $this->riwayat?->catat(RiwayatMasuk::DITOLAK_DOMAIN, $user->id, $lingkup, $ip, $perangkat, $email);
+
+            return new HasilMasuk(HasilMasuk::DOMAIN);
         }
 
         if (DaftarUser::perluHashBaru($user->kataSandi)) {
@@ -51,7 +67,7 @@ final class Autentikasi
 
         $this->pembatas->bersihkan($email, $ip);
         $this->user->catatMasuk($user->id);
-        $this->riwayat?->catat(RiwayatMasuk::MASUK, $user->id, $lingkup, $ip, $perangkat);
+        $this->riwayat?->catat(RiwayatMasuk::MASUK, $user->id, $lingkup, $ip, $perangkat, $email);
 
         return new HasilMasuk(HasilMasuk::BERHASIL, $user);
     }
