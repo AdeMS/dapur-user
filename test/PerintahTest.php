@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Test;
 
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\EmailUser;
 use AdeMS\Dapur\User\NamaTabel;
 use AdeMS\Dapur\User\Perintah;
 use AdeMS\Dapur\User\RiwayatAkun;
@@ -78,7 +79,7 @@ final class PerintahTest extends TestCase
         self::assertMatchesRegularExpression('/Tabel user_percobaan_masuk\s+dibuat/', $this->keluaran);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertSame(7, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
+        self::assertSame(8, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
         self::assertSame(0, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
     }
 
@@ -92,6 +93,61 @@ final class PerintahTest extends TestCase
         self::assertSame(1, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
         self::assertMatchesRegularExpression('/Tabel user_riwayat_akun\s+dibuat/', $this->keluaran);
         self::assertNotNull($this->daftar->cariId($id), 'Data lama tetap ada.');
+    }
+
+    public function testPasangDariVersiDuaSatuMenambahKolomDanMenyalinEmail(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin', self::SANDI);
+        $this->daftar->tambahAkses($id, 'dashboard');
+        // Susunan 2.1: tanpa tabel email dan tanpa kolom user_akses.email_id.
+        $this->db->query('DROP TABLE "user_email"', Adapter::QUERY_MODE_EXECUTE);
+        $this->db->query('ALTER TABLE "user_riwayat_masuk" DROP COLUMN "email"', Adapter::QUERY_MODE_EXECUTE);
+        (new RiwayatMasuk($this->db))->catat(RiwayatMasuk::MASUK, $id, 'dashboard', '192.0.2.1', 'Browser', 'admin@contoh.com');
+        $this->db->query('ALTER TABLE "user_akses" RENAME TO "akses_lama"', Adapter::QUERY_MODE_EXECUTE);
+        $this->db->query(
+            'CREATE TABLE "user_akses" (user_id INTEGER NOT NULL, lingkup TEXT NOT NULL, peran TEXT NOT NULL, PRIMARY KEY (user_id, lingkup))',
+            Adapter::QUERY_MODE_EXECUTE,
+        );
+        $this->db->query('INSERT INTO "user_akses" SELECT user_id, lingkup, peran FROM "akses_lama"', Adapter::QUERY_MODE_EXECUTE);
+        $this->db->query('DROP TABLE "akses_lama"', Adapter::QUERY_MODE_EXECUTE);
+        self::assertFalse((new EmailUser($this->db))->tersedia());
+
+        $this->jalankan($this->perintah(), ['pasang']);
+
+        self::assertMatchesRegularExpression('/Tabel user_email\s+dibuat/', $this->keluaran);
+        self::assertMatchesRegularExpression('/Kolom user_akses\.email_id\s+ditambahkan/', $this->keluaran);
+        self::assertMatchesRegularExpression('/Kolom user_riwayat_masuk\.email\s+ditambahkan/', $this->keluaran);
+        self::assertSame('', (new RiwayatMasuk($this->db))->untukUser($id)[0]['email'], 'Catatan lama tanpa email.');
+        self::assertStringContainsString('Email utama dicatat di tabel email: 1 akun.', $this->keluaran);
+        $email = new EmailUser($this->db);
+        self::assertTrue($email->tersedia());
+        self::assertSame($id, $email->pemilik('admin@contoh.com'));
+        self::assertNotNull($this->daftar->peranTersimpan($id, 'dashboard'), 'Akses lama tetap ada.');
+
+        // Diulang: tidak ada yang ditambah atau disalin lagi.
+        $this->jalankan($this->perintah(), ['pasang']);
+        self::assertDoesNotMatchRegularExpression('/ditambahkan|dicatat di tabel email/', $this->keluaran);
+    }
+
+    public function testDaftarEmailDanTambahEmail(): void
+    {
+        $id = $this->daftar->buat('budi@contoh.com', 'Budi', self::SANDI);
+
+        self::assertSame(1, $this->jalankan($this->perintah(), ['tambah-email', 'budi@contoh.com', 'bukan-email']));
+        self::assertSame(1, $this->jalankan($this->perintah(), ['tambah-email', 'tidak@ada.com', 'b@kantor.co.id']));
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['tambah-email', 'budi@contoh.com', 'Budi@Kantor.co.id']));
+        self::assertStringContainsString('budi@kantor.co.id ditambahkan ke akun budi@contoh.com', $this->keluaran);
+        self::assertSame($id, $this->daftar->cariEmail('budi@kantor.co.id')?->id);
+
+        // Diulang: sudah ada. Email milik akun lain ditolak.
+        self::assertSame(0, $this->jalankan($this->perintah(), ['tambah-email', 'budi@contoh.com', 'budi@kantor.co.id']));
+        $this->daftar->buat('citra@contoh.com', 'Citra', self::SANDI);
+        self::assertSame(1, $this->jalankan($this->perintah(), ['tambah-email', 'citra@contoh.com', 'budi@kantor.co.id']));
+
+        self::assertSame(0, $this->jalankan($this->perintah(), ['daftar-email', 'budi@kantor.co.id']));
+        self::assertMatchesRegularExpression('/budi@contoh\.com\s+utama/', $this->keluaran);
+        self::assertStringContainsString('budi@kantor.co.id', $this->keluaran);
     }
 
     public function testBuatAdmin(): void
