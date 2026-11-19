@@ -43,7 +43,7 @@ final class VerifikasiEmailHandler implements RequestHandlerInterface
 
         $isi   = $request->getMethod() === 'POST' ? (array) $request->getParsedBody() : $request->getQueryParams();
         $token = is_string($isi['token'] ?? null) ? $isi['token'] : '';
-        $data  = $this->token->periksa($token, [TokenUser::GANTI_EMAIL]);
+        $data  = $this->token->periksa($token, [TokenUser::GANTI_EMAIL, TokenUser::TAMBAH_EMAIL]);
         $user  = $data === null ? null : $this->daftar->cariId($data['user_id']);
 
         if ($data === null || $user === null || ! $user->aktif || filter_var($data['data'], FILTER_VALIDATE_EMAIL) === false) {
@@ -51,7 +51,8 @@ final class VerifikasiEmailHandler implements RequestHandlerInterface
         }
 
         $emailBaru = $data['data'];
-        $umum      = ['token' => $token, 'emailBaru' => $emailBaru, 'emailLama' => $user->email];
+        $tambah    = $data['jenis'] === TokenUser::TAMBAH_EMAIL;
+        $umum      = ['token' => $token, 'emailBaru' => $emailBaru, 'emailLama' => $user->email, 'tambah' => $tambah];
 
         if ($request->getMethod() !== 'POST') {
             return $this->tampil($sesi, $umum);
@@ -67,6 +68,27 @@ final class VerifikasiEmailHandler implements RequestHandlerInterface
         }
 
         $this->token->pakai($data['id']);
+
+        if ($tambah) {
+            // Email tambahan: akun tetap memakai email utamanya; email baru bisa dipakai untuk login dan dipilih
+            // untuk website tertentu.
+            if ($pemilik === null) {
+                $this->daftar->email()->tambah($user->id, $emailBaru);
+            }
+            $this->riwayatAkun->catat(
+                RiwayatAkun::TAMBAH_EMAIL,
+                $user->id,
+                $user->id,
+                $this->pintu->lingkup,
+                $emailBaru,
+                (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
+                $request->getHeaderLine('User-Agent'),
+            );
+            $sesi->simpan(ProfilHandler::SESI_PESAN, "{$emailBaru} sudah ditambahkan ke akun Anda dan bisa dipakai untuk masuk.");
+
+            return new RedirectResponse($this->pintu->alamatPengaturan() . '?tab=akun');
+        }
+
         $this->daftar->gantiEmail($user->id, $emailBaru);
         $this->riwayatAkun->catat(
             RiwayatAkun::UBAH_EMAIL,
@@ -98,6 +120,7 @@ final class VerifikasiEmailHandler implements RequestHandlerInterface
             'token'            => '',
             'emailBaru'        => '',
             'emailLama'        => '',
+            'tambah'           => false,
             'alamatVerifikasi' => $this->pintu->alamatVerifikasiEmail(),
         ], $status);
     }
