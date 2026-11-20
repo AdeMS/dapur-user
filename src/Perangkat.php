@@ -41,8 +41,59 @@ final class Perangkat
         ['#\bLinux\b#', 'Linux'],
     ];
 
+    /** Isi kolom perangkat untuk perubahan lewat perintah dapur-user di terminal (sebelum 2.2, tanpa nama akun). */
+    public const TERMINAL = 'dapur-user (terminal)';
+
+    /**
+     * Isi kolom perangkat untuk perintah dapur-user di terminal, bersama nama akun sistem yang menjalankannya,
+     * misalnya "dapur-user (terminal: ade)" atau "dapur-user (terminal: Claudia, lewat sudo dari ade)". Yang tercatat
+     * adalah akun sistem server, bukan akun Dapur.
+     */
+    public static function terminal(): string
+    {
+        $akun = null;
+        if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+            $info = posix_getpwuid(posix_geteuid());
+            $akun = is_array($info) && is_string($info['name'] ?? null) ? $info['name'] : null;
+        }
+
+        $akun ??= get_current_user() ?: null;
+        if ($akun === null || $akun === '') {
+            return self::TERMINAL;
+        }
+
+        $sudo = getenv('SUDO_USER');
+        if (is_string($sudo) && $sudo !== '' && $sudo !== $akun) {
+            $akun .= ', lewat sudo dari ' . $sudo;
+        }
+
+        return 'dapur-user (terminal: ' . self::bersihkan($akun) . ')';
+    }
+
+    /** Nama akun sistem dari isi kolom perangkat perintah terminal, null bila bukan dari terminal atau tanpa nama. */
+    public static function akunTerminal(string $perangkat): ?string
+    {
+        return preg_match('/^dapur-user \(terminal: (.+)\)$/', $perangkat, $cocok) === 1 ? $cocok[1] : null;
+    }
+
+    public static function dariTerminal(string $perangkat): bool
+    {
+        return $perangkat === self::TERMINAL || self::akunTerminal($perangkat) !== null;
+    }
+
+    private static function bersihkan(string $teks): string
+    {
+        return substr(preg_replace('/[^\w.@ ,-]/u', '', $teks) ?? '', 0, 120);
+    }
+
     public static function ringkas(string $userAgent): string
     {
+        if (self::dariTerminal($userAgent)) {
+            $akun = self::akunTerminal($userAgent);
+
+            return $akun === null ? 'Terminal' : "Terminal ({$akun})";
+        }
+
         $browser = null;
         foreach (self::BROWSER as [$pola, $nama]) {
             if (preg_match($pola, $userAgent, $cocok) === 1) {
