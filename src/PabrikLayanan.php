@@ -129,6 +129,8 @@ final class PabrikLayanan
      *
      * @param bool $kelolaAkun izinkan aktif/nonaktif akun; akun berlaku di semua lingkup, jadi sebaiknya
      *                         hanya untuk dashboard utama
+     * @param DaftarWebsite|null $daftarWebsite website yang aksesnya bisa diatur admin super dari halaman ini
+     *                         (dashboard utama)
      */
     public static function kelolaUser(
         ContainerInterface $c,
@@ -136,6 +138,7 @@ final class PabrikLayanan
         ?PenyajiHalaman $penyaji = null,
         string $template = KelolaUserHandler::TEMPLATE,
         bool $kelolaAkun = false,
+        ?DaftarWebsite $daftarWebsite = null,
     ): KelolaUserHandler {
         return new KelolaUserHandler(
             $c->get(DaftarUser::class),
@@ -149,6 +152,7 @@ final class PabrikLayanan
             $c->get(SuratUser::class),
             self::namaWebsite($c),
             $c->get(Pengaturan::class)->domainEmail,
+            $daftarWebsite,
         );
     }
 
