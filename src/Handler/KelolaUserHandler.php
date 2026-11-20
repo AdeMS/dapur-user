@@ -591,7 +591,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $e->getMessage();
         }
 
-        $this->catat($request, RiwayatAkun::UNDANG, $admin, $user->id, 'email');
+        // Undangan ke website lain dicatat di riwayat website itu, bersama pemberian aksesnya.
+        $this->catat($request, RiwayatAkun::UNDANG, $admin, $user->id, 'email', $website);
 
         return null;
     }
