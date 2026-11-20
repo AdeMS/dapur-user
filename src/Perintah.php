@@ -14,8 +14,8 @@ use Laminas\Db\Metadata\Source\Factory;
  */
 final class Perintah
 {
-    /** Isi kolom perangkat di riwayat untuk kata sandi yang diganti lewat perintah ini. */
-    public const PERANGKAT_TERMINAL = 'dapur-user (terminal)';
+    /** Isi kolom perangkat sebelum 2.2; sekarang perintah ini mencatat Perangkat::terminal() bersama nama akun sistem. */
+    public const PERANGKAT_TERMINAL = Perangkat::TERMINAL;
 
     /**
      * @param Closure(string): string      $bacaSandi meminta kata sandi tanpa menampilkannya
@@ -196,7 +196,7 @@ final class Perintah
     private function simpanSandi(User $user, string $sandi): void
     {
         $this->user->gantiSandi($user->id, $sandi);
-        $this->riwayat?->catat(RiwayatMasuk::GANTI_SANDI, $user->id, $this->lingkup, '', self::PERANGKAT_TERMINAL);
+        $this->riwayat?->catat(RiwayatMasuk::GANTI_SANDI, $user->id, $this->lingkup, '', Perangkat::terminal());
         printf('Kata sandi %s sudah diganti. Session yang sedang login di semua perangkat berakhir.%s', $user->email, PHP_EOL);
     }
 
@@ -297,7 +297,7 @@ final class Perintah
     /** Perubahan akun lewat terminal dicatat tanpa pelaku. */
     private function catatAkun(string $peristiwa, int $sasaranId, string $keterangan = ''): void
     {
-        $this->riwayatAkun?->catat($peristiwa, null, $sasaranId, $this->lingkup, $keterangan, '', self::PERANGKAT_TERMINAL);
+        $this->riwayatAkun?->catat($peristiwa, null, $sasaranId, $this->lingkup, $keterangan, '', Perangkat::terminal());
     }
 
     /** Tanpa email: perubahan akun di lingkup ini. Dengan email: perubahan pada akun user itu di semua lingkup. */
@@ -492,7 +492,7 @@ final class Perintah
         }
 
         $daftar->tambah($user->id, $emailBaru);
-        $this->riwayatAkun?->catat(RiwayatAkun::TAMBAH_EMAIL, null, $user->id, $this->lingkup, $emailBaru, '', self::PERANGKAT_TERMINAL);
+        $this->riwayatAkun?->catat(RiwayatAkun::TAMBAH_EMAIL, null, $user->id, $this->lingkup, $emailBaru, '', Perangkat::terminal());
         printf('%s ditambahkan ke akun %s dan bisa dipakai untuk masuk.%s', $emailBaru, $user->email, PHP_EOL);
 
         return 0;
