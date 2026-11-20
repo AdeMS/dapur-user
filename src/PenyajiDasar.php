@@ -33,6 +33,7 @@ final class PenyajiDasar implements PenyajiHalaman
         return new HtmlResponse($this->renderer->render($template, $data + [
             'layout'       => $this->pintu->layout,
             'user'         => $request->getAttribute(User::class),
+            'emailTampil'  => $request->getAttribute(Middleware\WajibMasukMiddleware::ATRIBUT_EMAIL),
             'alamatKeluar' => $this->pintu->alamatKeluar(),
             'alamatProfil' => $this->pintu->alamatProfil(),
             'alamatPengaturan' => $this->pintu->alamatPengaturan(),
