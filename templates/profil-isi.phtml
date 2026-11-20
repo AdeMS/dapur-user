@@ -5,6 +5,7 @@
  * tautannya ada di kartu ini.
  *
  * @var AdeMS\Dapur\User\User $user
+ * @var string|null $emailTampil  email yang ditampilkan (email website ini); bawaan email utama
  * @var string|null $pesan        pesan berhasil
  * @var string|null $galat        pesan kesalahan
  * @var array{nilai: string, label: string}|null $peran  peran di lingkup ini
@@ -54,7 +55,7 @@ $aktif = $this->aktif ?? true;
                     <div class="text-center mb-3">
                         <span class="user-avatar user-profil-avatar mb-3" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
                         <h2 class="h5 mb-0"><?= $this->escapeHtml($this->user->nama) ?></h2>
-                        <div class="text-body-secondary text-break"><?= $this->escapeHtml($this->user->email) ?></div>
+                        <div class="text-body-secondary text-break"><?= $this->escapeHtml($this->emailTampil ?? $this->user->email) ?></div>
                     </div>
                     <dl class="user-profil-data mb-3">
 <?php if ($peran) : ?>
