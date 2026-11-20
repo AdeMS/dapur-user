@@ -10,6 +10,7 @@ use AdeMS\Dapur\Email\Pesan;
 use AdeMS\Dapur\Email\SuratTemplat;
 use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\DaftarWebsite;
 use AdeMS\Dapur\User\Handler\AturSandiHandler;
 use AdeMS\Dapur\User\Handler\HalamanPublik;
 use AdeMS\Dapur\User\Handler\KelolaUserHandler;
@@ -182,7 +183,7 @@ final class AlurEmailTest extends TestCase
         );
     }
 
-    private function kelola(): KelolaUserHandler
+    private function kelola(?DaftarWebsite $website = null): KelolaUserHandler
     {
         return new KelolaUserHandler(
             $this->daftar,
@@ -195,6 +196,7 @@ final class AlurEmailTest extends TestCase
             $this->token,
             $this->surat,
             'Dapur Uji',
+            daftarWebsite: $website,
         );
     }
 
@@ -257,6 +259,30 @@ final class AlurEmailTest extends TestCase
 
         self::assertSame(410, $this->atur()->handle($this->permintaan('POST', '/atur-sandi', ['token' => $token, 'sandi_baru' => self::BARU, 'sandi_ulang' => self::BARU]))->getStatusCode(), 'Sekali pakai.');
         self::assertSame(410, $this->atur()->handle($this->permintaan('GET', '/atur-sandi', ['token' => 'palsu']))->getStatusCode());
+    }
+
+    public function testUndanganUntukWebsiteLainDicatatDiWebsiteItu(): void
+    {
+        $website = new class implements DaftarWebsite {
+            public function website(): array
+            {
+                return ['toko.contoh.com'];
+            }
+
+            public function batasanDomain(string $host): BatasanDomain
+            {
+                return new BatasanDomain();
+            }
+        };
+
+        $hasil = $this->kelola($website)->handle($this->permintaan('POST', '/user', ['aksi' => 'tambah', 'email' => 'citra@contoh.com', 'nama' => 'Citra', 'peran' => 'admin_web', 'lingkup' => 'toko.contoh.com'], $this->admin));
+        self::assertSame(302, $hasil->getStatusCode());
+        self::assertSame('Undangan bergabung ke toko.contoh.com', $this->pengirim->terkirim[0]->subjek);
+        self::assertSame(
+            [RiwayatAkun::UNDANG, RiwayatAkun::BERI_AKSES, RiwayatAkun::BUAT_USER],
+            array_column((new RiwayatAkun($this->db))->untukLingkup('toko.contoh.com'), 'peristiwa'),
+        );
+        self::assertSame([], (new RiwayatAkun($this->db))->untukLingkup('dashboard'));
     }
 
     public function testUndanganUserBaru(): void
