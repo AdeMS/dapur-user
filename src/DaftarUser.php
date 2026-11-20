@@ -335,6 +335,61 @@ final class DaftarUser
     }
 
     /**
+     * Semua akun di database, untuk admin super di dashboard utama: email utama, jumlah email, dan akses ke setiap
+     * lingkup. Waktu terakhir_masuk dalam UTC.
+     *
+     * Setiap akses memuat email yang dipakai di lingkup itu bila berbeda dari email utama (null = email utama).
+     *
+     * @return list<array{id: int, email: string, nama: string, aktif: bool, terakhir_masuk: ?string, jumlahEmail: int, semuaEmail: list<string>, akses: list<array{lingkup: string, peran: string, email: ?string}>}>
+     */
+    public function semuaAkun(): array
+    {
+        $tersedia = $this->email->tersedia();
+        $sql      = $tersedia
+            ? "SELECT a.user_id, a.lingkup, a.peran, e.email FROM {$this->tAkses} a"
+                . " LEFT JOIN {$this->tEmail} e ON e.id = a.email_id AND e.user_id = a.user_id ORDER BY a.lingkup"
+            : "SELECT user_id, lingkup, peran, NULL AS email FROM {$this->tAkses} ORDER BY lingkup";
+        $akses    = [];
+        foreach ($this->baris($sql, []) as $b) {
+            $akses[(int) $b['user_id']][] = [
+                'lingkup' => (string) $b['lingkup'],
+                'peran'   => self::normalkanPeran((string) $b['peran'], (string) $b['lingkup']),
+                'email'   => $b['email'] === null ? null : (string) $b['email'],
+            ];
+        }
+
+        $semuaEmail = [];
+        if ($tersedia) {
+            foreach ($this->baris("SELECT user_id, email FROM {$this->tEmail} ORDER BY email", []) as $b) {
+                $semuaEmail[(int) $b['user_id']][] = (string) $b['email'];
+            }
+        }
+
+        $hasil = [];
+        foreach ($this->baris("SELECT id, email, nama, aktif, terakhir_masuk FROM {$this->tUser} ORDER BY email", []) as $b) {
+            $id      = (int) $b['id'];
+            $utama   = (string) $b['email'];
+            // Email utama lebih dulu, lalu email tambahan urut abjad.
+            $email   = array_values(array_unique([$utama, ...($semuaEmail[$id] ?? [])]));
+            $hasil[] = [
+                'id'             => $id,
+                'email'          => $utama,
+                'nama'           => (string) $b['nama'],
+                'aktif'          => (int) $b['aktif'] === 1,
+                'terakhir_masuk' => $b['terakhir_masuk'] === null ? null : (string) $b['terakhir_masuk'],
+                'jumlahEmail'    => count($email),
+                'semuaEmail'     => $email,
+                'akses'          => array_map(
+                    static fn (array $x): array => ['email' => $x['email'] === $utama ? null : $x['email']] + $x,
+                    $akses[$id] ?? [],
+                ),
+            ];
+        }
+
+        return $hasil;
+    }
+
+    /**
      * @param array<string, mixed> $b
      * @return array{id: int, email: string, nama: string, aktif: bool, peran: string, terakhir_masuk: ?string, otomatis: bool}
      */
