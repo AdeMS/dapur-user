@@ -331,11 +331,11 @@ final class Perintah
         printf('%s (waktu %s):%s', $judul, $zona->getName(), PHP_EOL);
         foreach ($baris as $b) {
             printf(
-                '%s  %-11s  %-28s  oleh %-28s  %-20s  %s%s',
+                '%s  %-13s  %-28s  oleh %-28s  %-20s  %s%s',
                 $this->waktu($b['waktu'], $zona),
                 $b['peristiwa'],
                 $b['sasaran'],
-                $b['pelaku'] ?? '(terminal)',
+                $b['pelaku'] ?? (($akun = Perangkat::akunTerminal($b['perangkat'])) === null ? '(terminal)' : "(terminal: {$akun})"),
                 $b['lingkup'],
                 $b['keterangan'],
                 PHP_EOL,
