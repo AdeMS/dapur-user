@@ -34,6 +34,12 @@ final class WajibMasukMiddleware implements MiddlewareInterface
     /** Nama atribut request berisi peran user di lingkup pintu ini: 'admin_super', 'admin_web', atau 'anggota'. */
     public const ATRIBUT_PERAN = 'user.peran';
 
+    /**
+     * Nama atribut request berisi email yang ditampilkan untuk user di lingkup ini: email pilihannya untuk website
+     * itu (Pengaturan & Privasi), atau email utama.
+     */
+    public const ATRIBUT_EMAIL = 'user.email_tampil';
+
     public function __construct(
         private readonly DaftarUser $daftar,
         private readonly Pintu $pintu,
@@ -77,7 +83,14 @@ final class WajibMasukMiddleware implements MiddlewareInterface
 
         $sesi->simpan(self::SESI_TERAKHIR, time());
 
-        return $handler->handle($request->withAttribute(User::class, $user)->withAttribute(self::ATRIBUT_PERAN, $peran));
+        $email = $this->daftar->email();
+        $tampil = $email->tersedia() ? $email->emailLingkup($user->id, $this->pintu->lingkup) : $user->email;
+
+        return $handler->handle(
+            $request->withAttribute(User::class, $user)
+                ->withAttribute(self::ATRIBUT_PERAN, $peran)
+                ->withAttribute(self::ATRIBUT_EMAIL, $tampil),
+        );
     }
 
     /**
