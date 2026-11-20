@@ -7,6 +7,7 @@
  * Panggil dari template modul: $this->partial('user::menu-user', [...]).
  *
  * @var AdeMS\Dapur\User\User $user
+ * @var string|null $emailTampil  email yang ditampilkan (email website ini); bawaan email utama
  * @var string $alamatKeluar
  * @var string|null $alamatProfil  tautan Profil di submenu; tidak ditampilkan bila tidak diberikan
  * @var string|null $alamatPengaturan  tautan Pengaturan & Privasi; tidak ditampilkan bila tidak diberikan
@@ -48,7 +49,7 @@
                                         <span class="user-avatar user-avatar-menu flex-shrink-0" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
                                         <div class="text-nowrap">
                                             <div class="fw-semibold"><?= $this->escapeHtml($this->user->nama) ?></div>
-                                            <div class="small text-body-secondary"><?= $this->escapeHtml($this->user->email) ?></div>
+                                            <div class="small text-body-secondary"><?= $this->escapeHtml($this->emailTampil ?? $this->user->email) ?></div>
                                         </div>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
