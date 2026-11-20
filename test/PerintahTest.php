@@ -450,7 +450,7 @@ final class PerintahTest extends TestCase
 
         self::assertSame(0, $this->jalankan($this->perintah(), ['riwayat-akun']));
         self::assertStringContainsString("Riwayat akun di 'dashboard'", $this->keluaran);
-        self::assertMatchesRegularExpression('/beri_akses\s+admin@contoh\.com\s+oleh \(terminal\)/', $this->keluaran);
+        self::assertMatchesRegularExpression('/beri_akses\s+admin@contoh\.com\s+oleh \(terminal(: [^)]+)?\)/', $this->keluaran);
 
         self::assertSame(0, $this->jalankan($this->perintah(), ['riwayat-akun', 'admin@contoh.com']));
         self::assertStringContainsString('buat_user', $this->keluaran);
