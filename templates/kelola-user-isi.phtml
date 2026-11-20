@@ -1,6 +1,7 @@
 <?php
 /**
- * Isi halaman kelola user: tambah user, daftar user di lingkup ini, dan aktivitas terakhir.
+ * Isi halaman kelola user, dengan dua tab: Daftar User (tambah user + daftar user di lingkup ini; di dashboard utama
+ * admin super melihat semua akun) dan Aktivitas Terakhir. Tindakan per user ada di menu dropdown.
  *
  * @var bool $ditolak                       true bila user yang membuka bukan admin
  * @var string|null $belumSiap              pesan bila tabel yang diperlukan belum dibuat
@@ -14,6 +15,8 @@
  * @var string $lingkup
  * @var string $alamatKelola
  * @var string $zonaWaktu
+ * @var list<array<string, mixed>>|null $semuaAkun  semua akun (admin super di dashboard utama), atau null
+ * @var string $tampil                      tab yang terbuka: 'akses' atau 'aktivitas'
  * @var string $formEmail
  * @var string $formNama
  * @var string $formPeran
@@ -24,6 +27,19 @@
 $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) . '" value="'
     . $this->escapeHtmlAttr($this->tokenCsrf) . '">';
 $aksi = $this->escapeHtmlAttr($this->alamatKelola);
+$cari = $this->cari ?? '';
+// Kotak cari (GET ke halaman ini).
+$formCari = function (int $hasil, string $satuan) use ($cari, $aksi): string {
+    $h  = '<form method="get" action="' . $aksi . '" class="d-flex flex-wrap gap-2 mb-3" role="search">';
+    $h .= '<input class="form-control form-control-sm" style="max-width: 20rem" type="search" name="cari" maxlength="100" placeholder="Cari nama atau email" aria-label="Cari nama atau email" value="' . $this->escapeHtmlAttr($cari) . '">';
+    $h .= '<button type="submit" class="btn btn-sm btn-outline-success"><i class="bi bi-search me-1" aria-hidden="true"></i>Cari</button>';
+    if ($cari !== '') {
+        $h .= '<a class="btn btn-sm btn-outline-secondary" href="' . $aksi . '">Hapus pencarian</a>';
+        $h .= '<span class="small text-body-secondary align-self-center">' . $hasil . ' ' . $satuan . ' cocok dengan <em>' . $this->escapeHtml($cari) . '</em></span>';
+    }
+
+    return $h . '</form>';
+};
 $warnaPeristiwa = [
     'buat_user'   => 'success',
     'beri_akses'  => 'success',
@@ -82,116 +98,163 @@ $warnaPeristiwa = [
         <div class="small mt-1">Kata sandi ini hanya ditampilkan sekali. Sampaikan kepada user tersebut, lalu minta ia menggantinya di halaman Pengaturan &amp; Privasi setelah login.</div>
     </div>
 <?php endif ?>
-    <div class="card mb-4">
-        <div class="card-body">
-            <h2 class="h5 card-title">Tambah user</h2>
-            <p class="small text-body-secondary">Bila email sudah terdaftar, user itu cukup diberi akses ke sini. Bila belum, akunnya dibuat <?= ($this->pakaiUndangan ?? false) ? 'dan undangan dikirim ke email itu, berisi tautan untuk membuat kata sandinya sendiri.' : 'dengan kata sandi sementara.' ?></p>
-            <form method="post" action="<?= $aksi ?>" class="row g-2 align-items-end">
-                <?= $csrf ?>
-                <input type="hidden" name="aksi" value="tambah">
-                <div class="col-12 col-md-4">
-                    <label class="form-label" for="kelola-email">Email</label>
-                    <input class="form-control" id="kelola-email" name="email" type="email" maxlength="190" autocomplete="off" required value="<?= $this->escapeHtmlAttr($this->formEmail) ?>">
-                </div>
-                <div class="col-12 col-md-4">
-                    <label class="form-label" for="kelola-nama">Nama <span class="small text-body-secondary">(untuk user baru)</span></label>
-                    <input class="form-control" id="kelola-nama" name="nama" type="text" maxlength="190" autocomplete="off" value="<?= $this->escapeHtmlAttr($this->formNama) ?>">
-                </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label" for="kelola-peran">Peran</label>
-                    <select class="form-select" id="kelola-peran" name="peran">
-<?php foreach ($this->peranTersedia as $p => $labelPeran) : ?>
-                        <option value="<?= $this->escapeHtmlAttr($p) ?>"<?= $p === $this->formPeran ? ' selected' : '' ?>><?= $this->escapeHtml($labelPeran) ?></option>
-<?php endforeach ?>
-                    </select>
-                </div>
-                <div class="col-6 col-md-2">
-                    <button type="submit" class="btn btn-success w-100">Tambah</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    <div class="card mb-4">
-        <div class="card-body">
-            <h2 class="h5 card-title">Daftar user</h2>
-            <p class="small text-body-secondary">Admin bisa mengelola user di sini; anggota hanya bisa login dan memakai halaman di sini.<?php if ($this->lingkup !== AdeMS\Dapur\User\Konteks::LINGKUP_UTAMA) : ?> Admin super adalah admin di semua website dan hanya bisa diubah dari dashboard utama.<?php endif ?> Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th scope="col">User</th>
-                            <th scope="col">Peran</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Login terakhir</th>
-                            <th scope="col" class="text-end">Tindakan</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-<?php foreach ($this->daftarUser as $u) : ?>
-                        <tr>
-                            <td>
-                                <div class="fw-semibold"><?= $this->escapeHtml($u['nama']) ?><?php if ($u['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
-                                <div class="small text-body-secondary"><?= $this->escapeHtml($u['email']) ?></div>
-                            </td>
-                            <td>
-                                <span class="badge text-bg-<?= $u['peran'] === 'anggota' ? 'info' : ($u['peran'] === 'admin_super' ? 'warning' : 'success') ?>"><?= $this->escapeHtml($u['labelPeran']) ?></span>
-<?php if ($u['otomatis']) : ?>
-                                <div class="small text-body-secondary">berlaku di semua website</div>
-<?php endif ?>
-                            </td>
-                            <td><?= $u['aktif'] ? '<span class="badge text-bg-success">aktif</span>' : '<span class="badge text-bg-danger">nonaktif</span>' ?></td>
-                            <td class="text-nowrap small"><?= $u['login'] === null ? '<span class="text-body-secondary">belum pernah</span>' : $this->escapeHtml($u['login']) ?></td>
-                            <td class="text-end">
-                                <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-<?php if ($u['bisaUbahPeran']) : ?>
-<?php $peranLain = array_values(array_diff(array_keys($this->peranTersedia), [$u['peran']]))[0] ?? null ?>
-<?php if ($peranLain !== null) : ?>
-                                    <form method="post" action="<?= $aksi ?>">
-                                        <?= $csrf ?>
-                                        <input type="hidden" name="aksi" value="peran">
-                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                        <input type="hidden" name="peran" value="<?= $this->escapeHtmlAttr($peranLain) ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Jadikan <?= $this->escapeHtml(strtolower($this->peranTersedia[$peranLain])) ?></button>
-                                    </form>
-<?php endif ?>
-<?php endif ?>
-<?php if ($u['bisaAturAktif']) : ?>
-                                    <form method="post" action="<?= $aksi ?>" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode(($u['aktif'] ? 'Nonaktifkan akun ' : 'Aktifkan kembali akun ') . $u['email'] . '? Berlaku di semua website.')) ?>)">
-                                        <?= $csrf ?>
-                                        <input type="hidden" name="aksi" value="aktif">
-                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                        <input type="hidden" name="nilai" value="<?= $u['aktif'] ? '0' : '1' ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-warning"><?= $u['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
-                                    </form>
-<?php endif ?>
-<?php if ($u['bisaUndang'] ?? false) : ?>
-                                    <form method="post" action="<?= $aksi ?>">
-                                        <?= $csrf ?>
-                                        <input type="hidden" name="aksi" value="undang">
-                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-success">Kirim ulang undangan</button>
-                                    </form>
-<?php endif ?>
-<?php if ($u['bisaCabut']) : ?>
-                                    <form method="post" action="<?= $aksi ?>" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode('Cabut akses ' . $u['email'] . ' dari sini? Akunnya tidak dihapus.')) ?>)">
-                                        <?= $csrf ?>
-                                        <input type="hidden" name="aksi" value="cabut">
-                                        <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Cabut akses</button>
-                                    </form>
-<?php endif ?>
-                                </div>
-                            </td>
-                        </tr>
-<?php endforeach ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+<?php
+// Dua tab, dimuat ulang dari server (?tampil=aktivitas). Di dashboard utama, admin super melihat SEMUA akun di tab
+// Daftar User (termasuk akun yang hanya punya akses ke website); di website, hanya user website itu.
+$semuaAkun = $this->semuaAkun ?? null;
+$utama     = $semuaAkun !== null;
+$tampil    = ($this->tampil ?? 'akses') === 'aktivitas' ? 'aktivitas' : 'akses';
+$tabs      = ['akses' => 'Daftar User', 'aktivitas' => 'Aktivitas Terakhir'];
+$baris     = $utama ? $semuaAkun : $this->daftarUser;
+$websiteTersedia = $this->websiteTersedia ?? [];
+$peranWebsite    = $this->peranWebsite ?? ['admin_web' => 'Admin Web', 'anggota' => 'Anggota'];
+// Petunjuk batasan domain email website di daftar pilihan, misalnya " (hanya @kantor.co.id)".
+$petunjukDomain = static fn (array $w): string => ! $w['terbaca']
+    ? ' (pengaturan tidak terbaca)'
+    : ($w['domain'] === [] ? '' : ' (hanya ' . implode(', ', array_map(static fn (string $d): string => '@' . $d, $w['domain'])) . ')');
+$warnaPeran = static fn (string $p): string => $p === 'anggota' ? 'info' : ($p === 'admin_super' ? 'warning' : 'success');
+
+$popup = [];
+
+// Popup "Atur akses website" untuk satu akun (dashboard utama, admin super): akses website yang sudah ada (ubah
+// peran dan email, cabut) dan form beri akses ke website lain.
+$popupWebsite = function (array $a) use ($aksi, $csrf, $websiteTersedia, $peranWebsite, $petunjukDomain): string {
+    $id    = (int) $a['id'];
+    $e     = fn (string $t): string => $this->escapeHtml($t);
+    $ea    = fn (string $t): string => $this->escapeHtmlAttr($t);
+    $hidden = static fn (string $aksiForm, string $host): string => $csrf . '<input type="hidden" name="aksi" value="' . $aksiForm . '">'
+        . '<input type="hidden" name="user_id" value="' . $id . '"><input type="hidden" name="website" value="' . htmlspecialchars($host, ENT_QUOTES) . '">';
+    $pilihPeran = function (string $nama, string $terpilih) use ($peranWebsite, $ea, $e): string {
+        $h = '<select class="form-select form-select-sm" name="peran" aria-label="Peran">';
+        foreach ($peranWebsite as $p => $label) {
+            $h .= '<option value="' . $ea($p) . '"' . ($p === $terpilih ? ' selected' : '') . '>' . $e($label) . '</option>';
+        }
+
+        return $h . '</select>';
+    };
+    $pilihEmail = function (?string $terpilih) use ($a, $ea, $e): string {
+        $h = '<select class="form-select form-select-sm" name="email" aria-label="Email untuk website ini">';
+        foreach ($a['semuaEmail'] as $em) {
+            $utama = $em === $a['email'];
+            $h .= '<option value="' . ($utama ? '' : $ea($em)) . '"' . (($terpilih ?? $a['email']) === $em ? ' selected' : '') . '>' . $e($em . ($utama ? ' (utama)' : '')) . '</option>';
+        }
+
+        return $h . '</select>';
+    };
+
+    $dimiliki = [];
+    $baris    = '';
+    foreach ($a['akses'] as $x) {
+        if (! in_array($x['lingkup'], array_column($websiteTersedia, 'host'), true)) {
+            continue;
+        }
+        $host       = $x['lingkup'];
+        $dimiliki[] = $host;
+        $tanya      = $ea(json_encode('Cabut akses ' . $a['nama'] . ' ke ' . $host . '? Akunnya tidak dihapus.'));
+        $baris .= '<li class="list-group-item px-0">'
+            . '<div class="fw-semibold mb-2"><i class="bi bi-globe me-1" aria-hidden="true"></i>' . $e($host) . '</div>'
+            . '<form method="post" action="' . $aksi . '" class="row g-2 align-items-center" autocomplete="off">' . $hidden('akses_website', $host)
+            . '<div class="col-12 col-sm-4">' . $pilihPeran('peran', $x['peran']) . '</div>'
+            . '<div class="col-12 col-sm-8">' . $pilihEmail($x['email'] ?? null) . '</div>'
+            . '<div class="col-12 d-flex gap-2 justify-content-end">'
+            . '<button type="submit" class="btn btn-sm btn-success">Simpan</button>'
+            . '<button type="submit" class="btn btn-sm btn-outline-danger" form="cabut-website-' . $id . '-' . $ea(md5($host)) . '">Cabut akses</button>'
+            . '</div></form>'
+            . '<form method="post" action="' . $aksi . '" id="cabut-website-' . $id . '-' . $ea(md5($host)) . '" onsubmit="return confirm(' . $tanya . ')">' . $hidden('cabut_website', $host) . '</form>'
+            . '</li>';
+    }
+
+    $sisa = array_values(array_filter($websiteTersedia, static fn (array $w): bool => ! in_array($w['host'], $dimiliki, true)));
+    $beri = '';
+    if ($sisa !== []) {
+        $opsi = '';
+        foreach ($sisa as $w) {
+            $opsi .= '<option value="' . $ea($w['host']) . '">' . $e($w['host'] . $petunjukDomain($w)) . '</option>';
+        }
+        $beri = '<hr class="my-3"><h3 class="h6">Beri akses ke website lain</h3>'
+            . '<p class="small text-body-secondary mb-2">Website yang belum bisa diakses akun ini.</p>'
+            . '<form method="post" action="' . $aksi . '" class="row g-2" autocomplete="off">' . $csrf
+            . '<input type="hidden" name="aksi" value="akses_website"><input type="hidden" name="user_id" value="' . $id . '">'
+            . '<div class="col-12"><label class="form-label small mb-1" for="beri-website-' . $id . '">Website</label>'
+            . '<select class="form-select form-select-sm" id="beri-website-' . $id . '" name="website">' . $opsi . '</select></div>'
+            . '<div class="col-12 col-sm-4"><label class="form-label small mb-1">Peran</label>' . $pilihPeran('peran', 'anggota') . '</div>'
+            . '<div class="col-12 col-sm-8"><label class="form-label small mb-1">Email yang dipakai di website itu</label>' . $pilihEmail(null) . '</div>'
+            . '<div class="col-12 text-end"><button type="submit" class="btn btn-sm btn-success">Beri akses</button></div>'
+            . '</form>';
+    }
+
+    return '<div class="modal fade" id="akses-website-' . $id . '" tabindex="-1" aria-labelledby="akses-website-judul-' . $id . '" aria-hidden="true">'
+        . '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">'
+        . '<div class="modal-header"><h2 class="modal-title h5" id="akses-website-judul-' . $id . '">Akses website: ' . $e($a['nama']) . '</h2>'
+        . '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>'
+        . '<div class="modal-body">'
+        . '<h3 class="h6">Akses yang sudah dimiliki</h3>'
+        . ($baris === '' ? '<p class="small text-body-secondary mb-0">Belum punya akses ke website mana pun.</p>'
+            : '<p class="small text-body-secondary mb-1">Ubah peran atau email yang dipakai di website itu, lalu Simpan; atau cabut aksesnya.</p><ul class="list-group list-group-flush">' . $baris . '</ul>')
+        . $beri
+        . '<p class="small text-body-secondary mt-3 mb-0">Perubahan tercatat di riwayat akun dan terlihat oleh admin website itu. Website dengan batasan domain hanya menerima email dengan domain tersebut.</p>'
+        . '</div></div></div></div>';
+};
+
+// Menu tindakan satu baris (dropdown). Setiap item adalah form POST tersendiri.
+$menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
+    $item = function (string $nilaiAksi, string $label, string $ikon, array $isian = [], ?string $tanya = null, string $kelas = '') use ($aksi, $csrf, $u): string {
+        $h = '<li><form method="post" action="' . $aksi . '"' . ($tanya !== null ? ' onsubmit="return confirm(' . $this->escapeHtmlAttr(json_encode($tanya)) . ')"' : '') . '>' . $csrf
+            . '<input type="hidden" name="aksi" value="' . $nilaiAksi . '"><input type="hidden" name="user_id" value="' . (int) $u['id'] . '">';
+        foreach ($isian as $nama => $nilai) {
+            $h .= '<input type="hidden" name="' . $nama . '" value="' . $this->escapeHtmlAttr($nilai) . '">';
+        }
+
+        return $h . '<button type="submit" class="dropdown-item' . $kelas . '"><i class="bi ' . $ikon . ' me-2" aria-hidden="true"></i>' . $this->escapeHtml($label) . '</button></form></li>';
+    };
+
+    $atas = [];
+    if ($u['bisaAturWebsite'] ?? false) {
+        $atas[] = '<li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#akses-website-' . (int) $u['id'] . '">'
+            . '<i class="bi bi-globe me-2" aria-hidden="true"></i>Atur akses website…</button></li>';
+    }
+    if ($u['bisaUbahPeran'] && ($u['peran'] ?? null) !== null) {
+        foreach ($this->peranTersedia as $p => $labelPeran) {
+            if ($p !== $u['peran']) {
+                $atas[] = $item('peran', 'Jadikan ' . $labelPeran . ($utama ? ' di dashboard' : ''), 'bi-person-gear', ['peran' => $p]);
+            }
+        }
+    }
+    if ($u['bisaUndang'] ?? false) {
+        $atas[] = $item('undang', 'Kirim ulang undangan', 'bi-envelope-arrow-up');
+    }
+
+    $bawah = [];
+    if ($u['bisaAturAktif']) {
+        $bawah[] = $u['aktif']
+            ? $item('aktif', 'Nonaktifkan akun', 'bi-person-slash', ['nilai' => '0'], 'Nonaktifkan akun ' . $u['email'] . '? Berlaku di semua website.', ' text-warning-emphasis')
+            : $item('aktif', 'Aktifkan akun', 'bi-person-check', ['nilai' => '1'], 'Aktifkan kembali akun ' . $u['email'] . '? Berlaku di semua website.');
+    }
+    if ($u['bisaCabut']) {
+        $bawah[] = $item('cabut', $utama ? 'Cabut akses dashboard' : 'Cabut akses', 'bi-x-circle', [], 'Cabut akses ' . $u['email'] . ' dari sini? Akunnya tidak dihapus.', ' text-danger-emphasis');
+    }
+
+    if ($atas === [] && $bawah === []) {
+        return '';
+    }
+
+    return '<div class="dropdown">'
+        . '<button type="button" class="btn btn-sm btn-outline-secondary border-0" data-bs-toggle="dropdown" data-bs-popper-config=\'{"strategy":"fixed"}\' aria-expanded="false" title="Tindakan" aria-label="Tindakan untuk ' . $this->escapeHtmlAttr($u['nama']) . '"><i class="bi bi-three-dots-vertical" aria-hidden="true"></i></button>'
+        . '<ul class="dropdown-menu dropdown-menu-end">' . implode('', $atas)
+        . ($atas !== [] && $bawah !== [] ? '<li><hr class="dropdown-divider"></li>' : '') . implode('', $bawah) . '</ul></div>';
+};
+?>
     <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs flex-nowrap overflow-x-auto overflow-y-hidden">
+<?php foreach ($tabs as $kunci => $label) : ?>
+                <li class="nav-item"><a class="nav-link text-nowrap<?= $kunci === $tampil ? ' active' : '' ?>" href="<?= $this->escapeHtmlAttr($this->alamatKelola . ($kunci === 'akses' ? '' : '?tampil=' . $kunci)) ?>"<?= $kunci === $tampil ? ' aria-current="page"' : '' ?>><?= $this->escapeHtml($label) ?><?php if ($kunci === 'akses' && $utama) : ?> <span class="badge text-bg-secondary"><?= (int) ($this->jumlahSemua ?? count($semuaAkun)) ?></span><?php endif ?></a></li>
+<?php endforeach ?>
+            </ul>
+        </div>
         <div class="card-body">
-            <h2 class="h5 card-title">Aktivitas terakhir</h2>
+<?php if ($tampil === 'aktivitas') : ?>
+            <p class="small text-body-secondary">Perubahan akun dan akses terakhir di <code><?= $this->escapeHtml($this->lingkup) ?></code>. Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
 <?php if ($this->aktivitas === []) : ?>
             <p class="mb-0">Belum ada aktivitas.</p>
 <?php else : ?>
@@ -213,13 +276,153 @@ $warnaPeristiwa = [
                             <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaPeristiwa[$a['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($a['label']) ?></span></td>
                             <td class="small"><?= $this->escapeHtml($a['sasaran']) ?></td>
                             <td class="small"><?= $this->escapeHtml($a['keterangan']) ?></td>
-                            <td class="small text-nowrap"<?= $a['perangkat'] !== '' ? ' title="' . $this->escapeHtmlAttr($a['perangkatRingkas']) . '"' : '' ?>><?= $a['pelaku'] === null ? '<span class="text-body-secondary">terminal</span>' : $this->escapeHtml($a['pelaku']) ?></td>
+                            <td class="small text-nowrap"<?= $a['perangkat'] !== '' ? ' title="' . $this->escapeHtmlAttr($a['perangkatRingkas']) . '"' : '' ?>><?= $a['pelaku'] === null ? '<span class="text-body-secondary">terminal' . (($a['akunTerminal'] ?? null) !== null ? ' (' . $this->escapeHtml($a['akunTerminal']) . ')' : '') . '</span>' : $this->escapeHtml($a['pelaku']) ?></td>
                         </tr>
 <?php endforeach ?>
                     </tbody>
                 </table>
             </div>
 <?php endif ?>
+<?php else : ?>
+            <section>
+            <h2 class="h5 card-title">Tambah user</h2>
+<?php $adaWebsite = $websiteTersedia !== [] ?>
+            <p class="small text-body-secondary">Bila email sudah terdaftar, user itu cukup diberi akses<?= $adaWebsite ? ' ke dashboard ini atau website yang dipilih' : ' ke sini' ?>. Bila belum, akunnya dibuat <?= ($this->pakaiUndangan ?? false) ? 'dan undangan dikirim ke email itu, berisi tautan untuk membuat kata sandinya sendiri.' : 'dengan kata sandi sementara.' ?></p>
+            <form method="post" action="<?= $aksi ?>" class="row g-2 align-items-end">
+                <?= $csrf ?>
+                <input type="hidden" name="aksi" value="tambah">
+                <div class="col-12 <?= $adaWebsite ? 'col-md-6 col-xl-3' : 'col-md-4' ?>">
+                    <label class="form-label" for="kelola-email">Email</label>
+                    <input class="form-control" id="kelola-email" name="email" type="email" maxlength="190" autocomplete="off" required value="<?= $this->escapeHtmlAttr($this->formEmail) ?>">
+                </div>
+                <div class="col-12 <?= $adaWebsite ? 'col-md-6 col-xl-3' : 'col-md-4' ?>">
+                    <label class="form-label text-nowrap" for="kelola-nama">Nama <span class="small text-body-secondary">(untuk user baru)</span></label>
+                    <input class="form-control" id="kelola-nama" name="nama" type="text" maxlength="190" autocomplete="off" value="<?= $this->escapeHtmlAttr($this->formNama) ?>">
+                </div>
+<?php if ($adaWebsite) : ?>
+                <div class="col-12 col-md-4 col-xl-2">
+                    <label class="form-label" for="kelola-lingkup">Akses ke</label>
+                    <select class="form-select" id="kelola-lingkup" name="lingkup">
+                        <option value="<?= $this->escapeHtmlAttr($this->lingkup) ?>">Dashboard ini</option>
+<?php foreach ($websiteTersedia as $w) : ?>
+                        <option value="<?= $this->escapeHtmlAttr($w['host']) ?>"<?= $w['host'] === ($this->formLingkup ?? '') ? ' selected' : '' ?>><?= $this->escapeHtml($w['host'] . $petunjukDomain($w)) ?></option>
+<?php endforeach ?>
+                    </select>
+                </div>
+<?php endif ?>
+                <div class="col-6 <?= $adaWebsite ? 'col-md-4 col-xl-2' : 'col-md-2' ?>">
+                    <label class="form-label" for="kelola-peran">Peran</label>
+                    <select class="form-select" id="kelola-peran" name="peran">
+<?php foreach ($this->peranTersedia + ($adaWebsite ? $peranWebsite : []) as $p => $labelPeran) : ?>
+                        <option value="<?= $this->escapeHtmlAttr($p) ?>" data-label="<?= $this->escapeHtmlAttr($labelPeran) ?>" data-untuk="<?= isset($this->peranTersedia[$p]) && isset($peranWebsite[$p]) ? 'semua' : (isset($this->peranTersedia[$p]) ? 'dashboard' : 'website') ?>"<?= $p === $this->formPeran ? ' selected' : '' ?>><?= $this->escapeHtml($labelPeran) ?></option>
+<?php endforeach ?>
+                    </select>
+                </div>
+                <div class="col-6 <?= $adaWebsite ? 'col-md-4 col-xl-2' : 'col-md-2' ?>">
+                    <button type="submit" class="btn btn-success w-100">Tambah</button>
+                </div>
+            </form>
+<?php if ($adaWebsite) : ?>
+            <script>
+                // Peran yang bisa dipilih mengikuti tujuan: admin super hanya untuk dashboard ini, admin web hanya
+                // untuk website. Peran lain tetap terlihat tetapi tidak bisa dipilih. Server tetap memeriksa ulang.
+                (() => {
+                    const lingkup = document.getElementById('kelola-lingkup');
+                    const peran   = document.getElementById('kelola-peran');
+                    const atur = () => {
+                        const untuk = lingkup.selectedIndex === 0 ? 'dashboard' : 'website';
+                        for (const o of peran.options) {
+                            o.disabled = o.dataset.untuk !== 'semua' && o.dataset.untuk !== untuk;
+                            o.textContent = o.dataset.label + (o.disabled ? (o.dataset.untuk === 'website' ? ' (pilih website)' : ' (hanya dashboard)') : '');
+                        }
+                        if (peran.selectedOptions[0]?.disabled) {
+                            peran.value = 'anggota';
+                        }
+                    };
+                    lingkup.addEventListener('change', atur);
+                    atur();
+                })();
+            </script>
+<?php endif ?>
+            </section>
+            <hr class="my-4">
+            <section>
+            <h2 class="h5 card-title"><?= $utama ? 'Semua akun' : 'Daftar user' ?></h2>
+            <p class="small text-body-secondary"><?php if ($utama) : ?>Semua akun di Dapur, termasuk yang hanya punya akses ke website. Peran dan cabut akses di sini berlaku untuk dashboard ini; akses ke website tertentu diatur dari dashboard website itu. Akun yang dinonaktifkan tidak bisa login di website mana pun.<?php else : ?>Admin bisa mengelola user di sini; anggota hanya bisa login dan memakai halaman di sini. Admin super adalah admin di semua website dan hanya bisa diubah dari dashboard utama.<?php endif ?> Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+            <?= $formCari(count($baris), $utama ? 'akun' : 'user') ?>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?= $utama ? 'Akun' : 'User' ?></th>
+                            <th scope="col"><?= $utama ? 'Akses' : 'Peran' ?></th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Login terakhir</th>
+                            <th scope="col" class="text-end"><span class="visually-hidden">Tindakan</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+<?php foreach ($baris as $a) : ?>
+                        <tr>
+<?php if ($utama) : ?>
+                            <td>
+                                <div class="fw-semibold"><?= $this->escapeHtml($a['nama']) ?><?php if ($a['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
+                                <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?><?php if ($a['jumlahEmail'] > 1) : ?> <button type="button" class="badge text-bg-light border-0 collapsed" data-bs-toggle="collapse" data-bs-target="#akun-email-<?= (int) $a['id'] ?>" aria-expanded="false" aria-controls="akun-email-<?= (int) $a['id'] ?>">+<?= (int) $a['jumlahEmail'] - 1 ?> email</button><?php endif ?></div>
+<?php if ($a['jumlahEmail'] > 1) : ?>
+                                <ul class="collapse list-unstyled small mb-0 mt-1" id="akun-email-<?= (int) $a['id'] ?>">
+<?php foreach ($a['semuaEmail'] as $e) : ?>
+                                    <li class="d-flex align-items-center gap-1 mb-1">
+                                        <i class="bi bi-envelope" aria-hidden="true"></i><span class="text-break"><?= $this->escapeHtml($e) ?></span>
+<?php if ($e === $a['email']) : ?>
+                                        <span class="badge text-bg-success">Utama</span>
+<?php else : ?>
+                                        <form method="post" action="<?= $aksi ?>" class="d-inline" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode('Lepas ' . $e . ' dari akun ' . $a['nama'] . '? Email ini tidak bisa dipakai login lagi.')) ?>)">
+                                            <?= $csrf ?>
+                                            <input type="hidden" name="aksi" value="lepas_email">
+                                            <input type="hidden" name="user_id" value="<?= (int) $a['id'] ?>">
+                                            <input type="hidden" name="email" value="<?= $this->escapeHtmlAttr($e) ?>">
+                                            <button type="submit" class="btn btn-sm btn-link text-danger-emphasis text-decoration-none p-0 ms-1 small" title="Lepas email ini dari akun"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>Lepas</button>
+                                        </form>
+<?php endif ?>
+                                    </li>
+<?php endforeach ?>
+                                </ul>
+<?php endif ?>
+                            </td>
+                            <td class="small">
+<?php if ($a['akses'] === []) : ?>
+                                <span class="text-body-secondary">belum punya akses</span>
+<?php endif ?>
+<?php foreach ($a['akses'] as $x) : ?>
+                                <div class="text-nowrap"><code><?= $this->escapeHtml($x['lingkup']) ?></code> <span class="badge text-bg-<?= $x['peran'] === 'anggota' ? 'info' : ($x['peran'] === 'admin_super' ? 'warning' : 'success') ?>"><?= $this->escapeHtml($x['labelPeran']) ?></span><?php if (($x['email'] ?? null) !== null) : ?> <span class="text-body-secondary">· <?= $this->escapeHtml($x['email']) ?></span><?php endif ?></div>
+<?php endforeach ?>
+<?php if ($a['adminSuper']) : ?>
+                                <div class="text-body-secondary">admin di semua website</div>
+<?php endif ?>
+                            </td>
+<?php else : ?>
+                            <td>
+                                <div class="fw-semibold"><?= $this->escapeHtml($a['nama']) ?><?php if ($a['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
+                                <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?></div>
+                            </td>
+                            <td>
+                                <span class="badge text-bg-<?= $warnaPeran($a['peran']) ?>"><?= $this->escapeHtml($a['labelPeran']) ?></span>
+<?php if ($a['otomatis']) : ?>
+                                <div class="small text-body-secondary">berlaku di semua website</div>
+<?php endif ?>
+                            </td>
+<?php endif ?>
+                            <td><?= $a['aktif'] ? '<span class="badge text-bg-success">aktif</span>' : '<span class="badge text-bg-danger">nonaktif</span>' ?></td>
+                            <td class="text-nowrap small"><?= $a['login'] === null ? '<span class="text-body-secondary">belum pernah</span>' : $this->escapeHtml($a['login']) ?></td>
+                            <td class="text-end"><?= $menuTindakan($a) ?><?php if ($a['bisaAturWebsite'] ?? false) { $popup[] = $popupWebsite($a); } ?></td>
+                        </tr>
+<?php endforeach ?>
+                    </tbody>
+                </table>
+            </div>
+            </section>
+<?php endif ?>
         </div>
     </div>
+<?= implode("\n", $popup) ?>
 </div>
