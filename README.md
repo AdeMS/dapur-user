@@ -300,7 +300,32 @@ di dashboard website, dan hanya bisa dibuka admin. Di halaman ini admin bisa:
 - **mengaktifkan atau menonaktifkan akun**, hanya di dashboard utama. Akun nonaktif tidak bisa login di lingkup
   mana pun, dan session yang sedang berjalan langsung berakhir. Karena berlaku di semua website, admin website
   tidak bisa melakukannya.
-- melihat **aktivitas terakhir** di lingkup ini.
+- melihat **aktivitas terakhir** di lingkup ini, di tab tersendiri (`<alamat dasar>/user?tampil=aktivitas`).
+
+Tindakan untuk setiap user ada di menu titik tiga (⋮) di ujung barisnya.
+
+Di dashboard utama, admin super juga bisa mengatur **akses website** tanpa membuka dashboard website itu:
+
+- menu ⋮ **Atur akses website…** membuka popup berisi akses website akun itu (ubah peran Admin Web/Anggota, pilih
+  email yang dipakai di website itu, atau cabut akses) dan form **Beri akses website**;
+- form **Tambah user** punya pilihan **Akses ke**: dashboard ini atau salah satu website, sehingga orang baru bisa
+  langsung diundang sebagai admin web suatu website tanpa diberi akses ke dashboard utama.
+
+Batasan domain email website itu tetap berlaku: email yang dipakai di website harus sesuai `domain_email` website
+tersebut. Perubahan dicatat di riwayat akun website itu, sehingga admin web di sana ikut melihatnya. Daftar
+website diberikan modul yang memasang halaman ini lewat antarmuka `AdeMS\Dapur\User\DaftarWebsite` (argumen
+terakhir `PabrikLayanan::kelolaUser()`); adems/dapur-dashboard memakai website terdaftar di adems/dapur-multiwebsite.
+Tanpa daftar website, akses website hanya diatur dari dashboard website masing-masing.
+
+Di dashboard utama, tab **Daftar User** milik admin super berisi **semua akun** di
+database, termasuk akun yang hanya punya akses ke website atau belum punya akses sama sekali, dengan email utama,
+jumlah email, akses per website beserta perannya, status, dan login terakhir. Peran dan cabut akses di baris itu berlaku untuk
+dashboard utama (hanya bagi akun yang punya akses ke sana). Dari sana pula akun mana pun bisa diaktifkan
+atau dinonaktifkan, dan email tambahan sebuah akun bisa **dilepas**, misalnya email kantor karyawan yang sudah keluar:
+email itu tidak bisa dipakai login lagi, dan website yang memakainya kembali memakai email utama. Email utama tidak
+bisa dilepas. Akses dimiliki akun, bukan email: semua email akun bisa dipakai login ke website yang aksesnya dimiliki
+akun itu, kecuali di website dengan batasan domain email. Akses ke website tertentu tetap diatur dari dashboard website itu. Admin web tidak punya tampilan
+ini, sehingga akun dan email dari website lain tidak terlihat olehnya.
 
 Admin tidak bisa mengubah peran, mencabut akses, atau menonaktifkan dirinya sendiri, dan admin super terakhir
 tidak bisa diturunkan, dicabut, atau dinonaktifkan, agar Dapur tidak terkunci. Hanya user yang punya akses ke
@@ -345,7 +370,9 @@ dan `user::email-pemberitahuan` (masing-masing dengan versi `-teks`), yang bisa 
 Setiap perubahan akun dicatat bersama pelaku, user sasaran, lingkup tempat perubahan dilakukan, keterangan
 (misalnya `anggota → admin_web`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
 diubah, akun diaktifkan atau dinonaktifkan, serta email ditambah, dihapus, dijadikan utama, atau dipilih untuk
-website. Perubahan lewat perintah di terminal dicatat tanpa pelaku.
+website. Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server yang
+menjalankannya (misalnya `terminal (ade)`, atau `Claudia, lewat sudo dari ade`). Nama itu akun sistem di server,
+bukan akun Dapur, jadi tidak bisa membedakan orang yang memakai akun sistem yang sama.
 
 Riwayat akun disimpan selamanya. Lihat dengan `vendor/bin/dapur-user riwayat-akun`, atau di bagian aktivitas
 terakhir pada halaman kelola user.
