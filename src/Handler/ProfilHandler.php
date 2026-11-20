@@ -557,7 +557,7 @@ final class ProfilHandler implements RequestHandlerInterface
                 'lingkup'    => $b['lingkup'],
                 'user'       => $b['sasaran'] === $user->email ? 'Anda' : $b['sasaran'],
                 'oleh'       => match (true) {
-                    $b['pelaku'] === null        => 'Terminal',
+                    $b['pelaku'] === null        => Perangkat::dariTerminal($b['perangkat']) ? Perangkat::ringkas($b['perangkat']) : 'Terminal',
                     $b['pelaku'] === $user->email => 'Anda',
                     default                      => 'Admin',
                 },
