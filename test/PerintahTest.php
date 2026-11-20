@@ -348,7 +348,8 @@ final class PerintahTest extends TestCase
 
         $riwayat = (new RiwayatMasuk($this->db))->untukUser($id);
         self::assertSame(RiwayatMasuk::GANTI_SANDI, $riwayat[0]['peristiwa']);
-        self::assertSame(Perintah::PERANGKAT_TERMINAL, $riwayat[0]['perangkat']);
+        self::assertStringStartsWith('dapur-user (terminal', $riwayat[0]['perangkat']);
+        self::assertTrue(\AdeMS\Dapur\User\Perangkat::dariTerminal($riwayat[0]['perangkat']));
         self::assertStringContainsString('semua perangkat berakhir', $this->keluaran);
     }
 
