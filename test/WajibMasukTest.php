@@ -218,4 +218,22 @@ final class WajibMasukTest extends TestCase
 
         self::assertSame('admin_super', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_PERAN));
     }
+
+    public function testEmailWebsiteDiteruskanSebagaiAtribut(): void
+    {
+        $email = $this->daftar->email();
+        $email->tambah($this->id, 'admin@kantor.co.id');
+        $this->daftar->tambahAkses($this->id, 'kantor.co.id', DaftarUser::PERAN_ANGGOTA, 'admin@kantor.co.id');
+        $this->daftar->tambahAkses($this->id, 'blog.contoh.com', DaftarUser::PERAN_ANGGOTA);
+        $this->login();
+
+        $this->proses('kantor.co.id');
+        self::assertSame('admin@kantor.co.id', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_EMAIL));
+
+        $this->proses('blog.contoh.com');
+        self::assertSame('admin@contoh.com', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_EMAIL), 'Tanpa pilihan: email utama.');
+
+        $this->proses();
+        self::assertSame('admin@contoh.com', $this->diteruskan?->getAttribute(WajibMasukMiddleware::ATRIBUT_EMAIL));
+    }
 }
