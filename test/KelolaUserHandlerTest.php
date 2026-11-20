@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User\Test;
 
+use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\DaftarWebsite;
 use AdeMS\Dapur\User\Handler\KelolaUserHandler;
 use AdeMS\Dapur\User\Handler\ProfilHandler;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
@@ -298,5 +300,243 @@ final class KelolaUserHandlerTest extends TestCase
 
         self::assertSame(503, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->budi])->getStatusCode());
         self::assertSame('anggota', $this->daftar->peran($this->budi, self::LINGKUP), 'Tidak ada yang diubah.');
+    }
+
+    public function testTabDariAlamat(): void
+    {
+        $tab = function (string $nilai): string {
+            $this->handler(true)->handle($this->permintaan('GET', $this->admin)->withQueryParams(['tampil' => $nilai]));
+
+            return $this->renderer->data['tampil'];
+        };
+
+        self::assertSame('aktivitas', $tab('aktivitas'));
+        self::assertSame('akses', $tab('semua'), 'Tab Semua Akun sudah digabung ke Daftar User.');
+        self::assertNull($this->renderer->data['semuaAkun'], 'Admin web tidak melihat semua akun.');
+        self::assertSame('akses', $tab('lain'));
+    }
+
+    public function testAdminSuperMelihatSemuaAkunDiDashboardUtama(): void
+    {
+        $super = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
+        $this->daftar->tambahAkses($super, 'dashboard');
+        $citra = $this->daftar->buat('citra@lain.com', 'Citra', self::SANDI);
+        $this->daftar->email()->tambah($citra, 'citra@kantor.co.id');
+        $utama = new Pintu('dashboard', '/', 3600, 'layout::uji');
+        $handler = new KelolaUserHandler(
+            $this->daftar, $this->riwayatAkun, new PenyajiDasar($this->renderer, $utama), $utama, new DateTimeZone('Asia/Jakarta'), true,
+        );
+        $minta = function (string $metode, int $sebagai, array $isi = [], array $query = []) use ($handler): ResponseInterface {
+            if ($metode === 'POST') {
+                $isi[TokenCsrf::FIELD] = (new TokenCsrf($this->sesi))->token();
+            }
+
+            return $handler->handle(
+                (new ServerRequest(['REMOTE_ADDR' => '192.0.2.1'], [], '/user', $metode))
+                    ->withQueryParams($query)
+                    ->withParsedBody($metode === 'POST' ? $isi : null)
+                    ->withAttribute(Sesi::class, $this->sesi)
+                    ->withAttribute(User::class, $this->daftar->cariId($sebagai))
+                    ->withAttribute(WajibMasukMiddleware::ATRIBUT_PERAN, $this->daftar->peran($sebagai, 'dashboard')),
+            );
+        };
+
+        // Email yang dipakai di website ditampilkan bila berbeda dari email utama.
+        $this->daftar->tambahAkses($citra, 'kantor.co.id', DaftarUser::PERAN_ANGGOTA, 'citra@kantor.co.id');
+
+        $this->daftar->buat('eka@contoh.com', 'Eka', self::SANDI);
+        $minta('GET', $super);
+        self::assertSame('akses', $this->renderer->data['tampil']);
+        $semua = array_column($this->renderer->data['semuaAkun'], null, 'email');
+        self::assertSame(['admin@contoh.com', 'budi@contoh.com', 'citra@lain.com', 'eka@contoh.com', 'super@contoh.com'], array_keys($semua));
+        self::assertSame([], $semua['eka@contoh.com']['akses'], 'Akun tanpa akses tetap terlihat.');
+        self::assertSame(2, $semua['citra@lain.com']['jumlahEmail']);
+        self::assertSame('citra@kantor.co.id', $semua['citra@lain.com']['akses'][0]['email']);
+        self::assertSame([['email' => null, 'lingkup' => self::LINGKUP, 'peran' => 'anggota', 'labelPeran' => 'Anggota']], $semua['budi@contoh.com']['akses']);
+        self::assertSame(['citra@lain.com', 'citra@kantor.co.id'], $semua['citra@lain.com']['semuaEmail'], 'Email utama lebih dulu.');
+        self::assertTrue($semua['super@contoh.com']['adminSuper']);
+        self::assertFalse($semua['super@contoh.com']['bisaAturAktif'], 'Akun sendiri.');
+
+        // Akses dashboard diatur dari baris yang sama: hanya akun yang punya akses ke dashboard ini.
+        self::assertNull($semua['eka@contoh.com']['peran']);
+        self::assertFalse($semua['eka@contoh.com']['bisaCabut']);
+        self::assertFalse($semua['super@contoh.com']['bisaUbahPeran'], 'Akun sendiri.');
+
+        // Akun yang hanya punya akses ke website bisa dinonaktifkan dari dashboard utama.
+        $hasil = $minta('POST', $super, ['aksi' => 'aktif', 'user_id' => (string) $this->budi, 'nilai' => '0']);
+        self::assertSame('/user', $hasil->getHeaderLine('Location'));
+        self::assertFalse($this->daftar->cariId($this->budi)?->aktif);
+
+        // Pencarian di Semua akun mencakup email tambahan; jumlah total tetap untuk tab.
+        $minta('GET', $super, [], ['cari' => 'KANTOR.co']);
+        self::assertSame(['citra@lain.com'], array_column($this->renderer->data['semuaAkun'], 'email'));
+        self::assertSame(5, $this->renderer->data['jumlahSemua']);
+        self::assertSame('KANTOR.co', $this->renderer->data['cari']);
+
+        // Admin super melepas email tambahan; email utama tidak bisa dilepas.
+        $lepas = fn (string $email) => $minta('POST', $super, ['aksi' => 'lepas_email', 'user_id' => (string) $citra, 'email' => $email]);
+        self::assertSame(422, $lepas('citra@lain.com')->getStatusCode());
+        self::assertSame(404, $lepas('tidak@ada.com')->getStatusCode());
+        self::assertSame('/user', $lepas('citra@kantor.co.id')->getHeaderLine('Location'));
+        self::assertNull($this->daftar->cariEmail('citra@kantor.co.id'));
+        self::assertSame('citra@lain.com', $this->daftar->email()->emailLingkup($citra, 'kantor.co.id'), 'Website kembali ke email utama.');
+        $terakhir = $this->riwayatAkun->untukUser($citra)[0];
+        self::assertSame([RiwayatAkun::HAPUS_EMAIL, 'super@contoh.com', 'citra@kantor.co.id'], [$terakhir['peristiwa'], $terakhir['pelaku'], $terakhir['keterangan']]);
+
+        // Bukan admin super: tidak ada daftar semua akun, dan akun di luar lingkup tidak bisa disentuh.
+        $anggota = $this->daftar->buat('dewi@contoh.com', 'Dewi', self::SANDI);
+        $this->daftar->tambahAkses($anggota, 'dashboard', DaftarUser::PERAN_ANGGOTA);
+        self::assertSame(403, $minta('GET', $anggota)->getStatusCode());
+        self::assertNull($this->renderer->data['semuaAkun']);
+
+        // Di dashboard website (tanpa kelola akun), admin super pun tidak mendapat daftar semua akun.
+        $this->handler()->handle($this->permintaan('GET', $super));
+        self::assertNull($this->renderer->data['semuaAkun']);
+    }
+
+    public function testCariDiWebsiteHanyaEmailWebsite(): void
+    {
+        $this->daftar->email()->tambah($this->budi, 'budi@kantor.co.id');
+
+        $cari = fn (string $kata) => $this->handler()->handle($this->permintaan('GET', $this->admin)->withQueryParams(['cari' => $kata]));
+
+        $cari('bud');
+        self::assertSame(['budi@contoh.com'], array_column($this->renderer->data['daftarUser'], 'email'));
+        $cari('kantor.co.id');
+        self::assertSame([], $this->renderer->data['daftarUser'], 'Email yang tidak dipakai di website ini tidak bisa dicari.');
+        self::assertNull($this->renderer->data['semuaAkun']);
+    }
+
+    /**
+     * Handler dashboard utama dengan daftar website tiruan: toko (tanpa batasan) dan kantor (hanya @kantor.co.id).
+     *
+     * @return \Closure(string, int, array<string, string>=): ResponseInterface
+     */
+    private function utamaDenganWebsite(?DaftarWebsite $website = null): \Closure
+    {
+        $website ??= new class implements DaftarWebsite {
+            public function website(): array
+            {
+                return ['kantor.co.id', KelolaUserHandlerTest::LINGKUP_UJI, 'rusak.com'];
+            }
+
+            public function batasanDomain(string $host): BatasanDomain
+            {
+                return match ($host) {
+                    'kantor.co.id' => new BatasanDomain(['kantor.co.id']),
+                    'rusak.com'    => throw new \RuntimeException('pengaturan rusak'),
+                    default        => new BatasanDomain(),
+                };
+            }
+        };
+        $utama   = new Pintu('dashboard', '/', 3600, 'layout::uji');
+        $handler = new KelolaUserHandler(
+            $this->daftar, $this->riwayatAkun, new PenyajiDasar($this->renderer, $utama), $utama, new DateTimeZone('Asia/Jakarta'), true,
+            daftarWebsite: $website,
+        );
+
+        return function (string $metode, int $sebagai, array $isi = []) use ($handler): ResponseInterface {
+            if ($metode === 'POST') {
+                $isi[TokenCsrf::FIELD] = (new TokenCsrf($this->sesi))->token();
+            }
+
+            return $handler->handle(
+                (new ServerRequest(['REMOTE_ADDR' => '192.0.2.1'], [], '/user', $metode))
+                    ->withParsedBody($metode === 'POST' ? $isi : null)
+                    ->withAttribute(Sesi::class, $this->sesi)
+                    ->withAttribute(User::class, $this->daftar->cariId($sebagai))
+                    ->withAttribute(WajibMasukMiddleware::ATRIBUT_PERAN, $this->daftar->peran($sebagai, 'dashboard')),
+            );
+        };
+    }
+
+    public const LINGKUP_UJI = self::LINGKUP;
+
+    public function testAdminSuperMengaturAksesWebsiteDariDashboardUtama(): void
+    {
+        $super = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
+        $this->daftar->tambahAkses($super, 'dashboard');
+        $minta = $this->utamaDenganWebsite();
+
+        $minta('GET', $super);
+        self::assertSame(['kantor.co.id', self::LINGKUP, 'rusak.com'], array_column($this->renderer->data['websiteTersedia'], 'host'));
+        self::assertSame(['kantor.co.id'], $this->renderer->data['websiteTersedia'][0]['domain']);
+        self::assertFalse($this->renderer->data['websiteTersedia'][2]['terbaca']);
+        $baris = array_column($this->renderer->data['semuaAkun'], null, 'email');
+        self::assertTrue($baris['budi@contoh.com']['bisaAturWebsite']);
+        self::assertFalse($baris['super@contoh.com']['bisaAturWebsite'], 'Admin super sudah admin di semua website.');
+
+        // Email pribadi ditolak website kantor; email kantor milik akun yang sama diterima.
+        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web']);
+        self::assertSame(422, $hasil->getStatusCode());
+        self::assertStringContainsString('@kantor.co.id', $this->renderer->data['galat']);
+        self::assertNull($this->daftar->peran($this->budi, 'kantor.co.id'));
+
+        $this->daftar->email()->tambah($this->budi, 'budi@kantor.co.id');
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'orang@lain.com'])->getStatusCode(), 'Email bukan milik akun.');
+        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'budi@kantor.co.id']);
+        self::assertSame(302, $hasil->getStatusCode());
+        self::assertSame('/user', $hasil->getHeaderLine('Location'));
+        self::assertSame('admin_web', $this->daftar->peran($this->budi, 'kantor.co.id'));
+        self::assertSame('budi@kantor.co.id', $this->daftar->email()->emailLingkup($this->budi, 'kantor.co.id'));
+
+        // Riwayat tercatat di lingkup website itu, jadi admin website tersebut ikut melihatnya.
+        $riwayat = $this->riwayatAkun->untukLingkup('kantor.co.id');
+        self::assertSame(RiwayatAkun::BERI_AKSES, $riwayat[0]['peristiwa']);
+        self::assertSame('Super', $riwayat[0]['pelaku'], 'Admin super tanpa akses tersendiri ke website tampil dengan namanya.');
+
+        // Ubah peran di website lain yang sudah ada (toko: Budi anggota) dan cabut.
+        $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP, 'peran' => 'admin_web']);
+        self::assertSame('admin_web', $this->daftar->peran($this->budi, self::LINGKUP));
+        self::assertSame(RiwayatAkun::UBAH_PERAN, $this->riwayatAkun->untukLingkup(self::LINGKUP)[0]['peristiwa']);
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP, 'peran' => 'admin_super'])->getStatusCode());
+
+        $minta('POST', $super, ['aksi' => 'cabut_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP]);
+        self::assertNull($this->daftar->peran($this->budi, self::LINGKUP));
+        self::assertSame(404, $minta('POST', $super, ['aksi' => 'cabut_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP])->getStatusCode());
+
+        // Website tidak terdaftar, pengaturan rusak, dan admin super sebagai sasaran ditolak.
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'asing.com', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'dashboard', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(500, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'rusak.com', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $super, 'website' => self::LINGKUP, 'peran' => 'anggota'])->getStatusCode());
+    }
+
+    public function testTambahUserLangsungUntukWebsite(): void
+    {
+        $super = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
+        $this->daftar->tambahAkses($super, 'dashboard');
+        $minta = $this->utamaDenganWebsite();
+
+        // Admin super hanya untuk dashboard; email di luar domain website ditolak.
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'eka@kantor.co.id', 'nama' => 'Eka', 'peran' => 'admin_super', 'lingkup' => 'kantor.co.id'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'eka@gmail.com', 'nama' => 'Eka', 'peran' => 'admin_web', 'lingkup' => 'kantor.co.id'])->getStatusCode());
+        self::assertSame('kantor.co.id', $this->renderer->data['formLingkup']);
+
+        $hasil = $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'eka@kantor.co.id', 'nama' => 'Eka', 'peran' => 'admin_web', 'lingkup' => 'kantor.co.id']);
+        self::assertSame(302, $hasil->getStatusCode());
+        $eka = $this->daftar->cariEmail('eka@kantor.co.id');
+        self::assertNotNull($eka);
+        self::assertSame('admin_web', $this->daftar->peran($eka->id, 'kantor.co.id'));
+        self::assertNull($this->daftar->peran($eka->id, 'dashboard'), 'Tidak diberi akses dashboard utama.');
+        self::assertSame([RiwayatAkun::BERI_AKSES, RiwayatAkun::BUAT_USER], array_column($this->riwayatAkun->untukLingkup('kantor.co.id'), 'peristiwa'));
+
+        // Akun yang sudah ada cukup diberi akses.
+        $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'budi@contoh.com', 'peran' => 'anggota', 'lingkup' => 'kantor.co.id']);
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'budi@contoh.com', 'peran' => 'anggota', 'lingkup' => 'kantor.co.id'])->getStatusCode(), 'Email pribadi tetap ditolak website kantor.');
+        $this->daftar->email()->tambah($this->budi, 'budi@kantor.co.id');
+        self::assertSame(302, $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'budi@kantor.co.id', 'peran' => 'anggota', 'lingkup' => 'kantor.co.id'])->getStatusCode());
+        self::assertSame('anggota', $this->daftar->peran($this->budi, 'kantor.co.id'));
+        self::assertSame('budi@kantor.co.id', $this->daftar->email()->emailLingkup($this->budi, 'kantor.co.id'), 'Email yang diketik dipakai di website itu.');
+        self::assertSame(500, $minta('POST', $super, ['aksi' => 'tambah', 'email' => 'budi@contoh.com', 'peran' => 'anggota', 'lingkup' => 'rusak.com'])->getStatusCode());
+        self::assertNull($this->daftar->peran($this->budi, 'rusak.com'));
+    }
+
+    public function testAksesWebsiteHanyaUntukAdminSuperDiDashboardUtama(): void
+    {
+        // Admin web di website (tanpa daftar website) tidak bisa memakai aksi ini.
+        $hasil = $this->post(['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'lain.com', 'peran' => 'anggota']);
+        self::assertSame(403, $hasil->getStatusCode());
+        self::assertSame([], $this->renderer->data['websiteTersedia']);
     }
 }
