@@ -28,6 +28,17 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
     . $this->escapeHtmlAttr($this->tokenCsrf) . '">';
 $aksi = $this->escapeHtmlAttr($this->alamatKelola);
 $cari = $this->cari ?? '';
+// Nama user di daftar: foto kecil, lalu nama (nama di website ini bila ada) yang membuka halaman profilnya.
+$namaUser = function (array $a): string {
+    $nama = $a['namaTampil'] ?? $a['nama'];
+    $h    = '<div class="fw-semibold d-flex align-items-center gap-2">'
+        . $this->partial('user::avatar', ['foto' => $a['foto'] ?? null, 'inisial' => $a['inisial'] ?? '', 'kelas' => 'user-avatar-daftar flex-shrink-0']);
+    $h .= ($this->alamatProfil ?? null) !== null
+        ? '<a class="link-body-emphasis text-decoration-none" href="' . $this->escapeHtmlAttr($this->alamatProfil . '?id=' . (int) $a['id']) . '">' . $this->escapeHtml($nama) . '</a>'
+        : '<span>' . $this->escapeHtml($nama) . '</span>';
+
+    return $h . ($a['diriSendiri'] ? ' <span class="badge text-bg-secondary">Anda</span>' : '') . '</div>';
+};
 // Kotak cari (GET ke halaman ini).
 $formCari = function (int $hasil, string $satuan) use ($cari, $aksi): string {
     $h  = '<form method="get" action="' . $aksi . '" class="d-flex flex-wrap gap-2 mb-3" role="search">';
@@ -51,6 +62,8 @@ $warnaPeristiwa = [
     'undang'      => 'info',
     'ubah_email'  => 'secondary',
     'tambah_email'  => 'secondary',
+    'ubah_foto'     => 'secondary',
+    'ubah_profil'   => 'secondary',
     'hapus_email'   => 'secondary',
     'email_utama'   => 'secondary',
     'email_website' => 'secondary',
@@ -254,7 +267,23 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
         </div>
         <div class="card-body">
 <?php if ($tampil === 'aktivitas') : ?>
+<?php $semua = $this->aktivitasSemua ?? false ?>
+<?php if ($semua) : ?>
+            <p class="small text-body-secondary">Perubahan akun dan akses di dashboard ini dan semua website. Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+            <form method="get" action="<?= $aksi ?>" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <input type="hidden" name="tampil" value="aktivitas">
+                <label class="small text-body-secondary" for="aktivitas-lingkup">Lingkup</label>
+                <select class="form-select form-select-sm w-auto" id="aktivitas-lingkup" name="lingkup" onchange="this.form.submit()">
+                    <option value="">Semua lingkup</option>
+<?php foreach ($this->pilihanLingkup ?? [] as $l) : ?>
+                    <option value="<?= $this->escapeHtmlAttr($l) ?>"<?= $l === ($this->saringLingkup ?? '') ? ' selected' : '' ?>><?= $this->escapeHtml($l) ?></option>
+<?php endforeach ?>
+                </select>
+                <noscript><button type="submit" class="btn btn-sm btn-outline-success">Tampilkan</button></noscript>
+            </form>
+<?php else : ?>
             <p class="small text-body-secondary">Perubahan akun dan akses terakhir di <code><?= $this->escapeHtml($this->lingkup) ?></code>. Waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
+<?php endif ?>
 <?php if ($this->aktivitas === []) : ?>
             <p class="mb-0">Belum ada aktivitas.</p>
 <?php else : ?>
@@ -266,22 +295,34 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
                             <th scope="col">Peristiwa</th>
                             <th scope="col">User</th>
                             <th scope="col">Keterangan</th>
+<?php if ($semua) : ?>
+                            <th scope="col">Lingkup</th>
+<?php endif ?>
                             <th scope="col">Oleh</th>
                         </tr>
                     </thead>
                     <tbody>
-<?php foreach ($this->aktivitas as $a) : ?>
-                        <tr>
+<?php foreach ($this->aktivitas as $i => $a) : ?>
+                        <tr id="aktivitas-<?= (int) $i ?>">
                             <td class="text-nowrap small"><?= $this->escapeHtml($a['waktuSetempat']) ?></td>
                             <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaPeristiwa[$a['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($a['label']) ?></span></td>
                             <td class="small"><?= $this->escapeHtml($a['sasaran']) ?></td>
                             <td class="small"><?= $this->escapeHtml($a['keterangan']) ?></td>
+<?php if ($semua) : ?>
+                            <td class="small"><code><?= $this->escapeHtml($a['lingkup']) ?></code></td>
+<?php endif ?>
                             <td class="small text-nowrap"<?= $a['perangkat'] !== '' ? ' title="' . $this->escapeHtmlAttr($a['perangkatRingkas']) . '"' : '' ?>><?= $a['pelaku'] === null ? '<span class="text-body-secondary">terminal' . (($a['akunTerminal'] ?? null) !== null ? ' (' . $this->escapeHtml($a['akunTerminal']) . ')' : '') . '</span>' : $this->escapeHtml($a['pelaku']) ?></td>
                         </tr>
 <?php endforeach ?>
                     </tbody>
                 </table>
             </div>
+<?php if (($this->aktivitasLagi ?? null) !== null) : ?>
+<?php $lagi = $this->alamatKelola . '?tampil=aktivitas' . (($this->saringLingkup ?? '') !== '' ? '&lingkup=' . rawurlencode($this->saringLingkup) : '') . '&jumlah=' . (int) $this->aktivitasLagi . '#aktivitas-' . count($this->aktivitas) ?>
+            <div class="text-center mt-3">
+                <a class="btn btn-sm btn-outline-secondary" href="<?= $this->escapeHtmlAttr($lagi) ?>">Tampilkan lebih banyak</a>
+            </div>
+<?php endif ?>
 <?php endif ?>
 <?php else : ?>
             <section>
@@ -366,7 +407,7 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
                         <tr>
 <?php if ($utama) : ?>
                             <td>
-                                <div class="fw-semibold"><?= $this->escapeHtml($a['nama']) ?><?php if ($a['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
+                                <?= $namaUser($a) ?>
                                 <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?><?php if ($a['jumlahEmail'] > 1) : ?> <button type="button" class="badge text-bg-light border-0 collapsed" data-bs-toggle="collapse" data-bs-target="#akun-email-<?= (int) $a['id'] ?>" aria-expanded="false" aria-controls="akun-email-<?= (int) $a['id'] ?>">+<?= (int) $a['jumlahEmail'] - 1 ?> email</button><?php endif ?></div>
 <?php if ($a['jumlahEmail'] > 1) : ?>
                                 <ul class="collapse list-unstyled small mb-0 mt-1" id="akun-email-<?= (int) $a['id'] ?>">
@@ -402,7 +443,7 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
                             </td>
 <?php else : ?>
                             <td>
-                                <div class="fw-semibold"><?= $this->escapeHtml($a['nama']) ?><?php if ($a['diriSendiri']) : ?> <span class="badge text-bg-secondary">Anda</span><?php endif ?></div>
+                                <?= $namaUser($a) ?>
                                 <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?></div>
                             </td>
                             <td>
