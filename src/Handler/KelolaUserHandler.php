@@ -14,6 +14,7 @@ use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PenyajiHalaman;
 use AdeMS\Dapur\User\Perangkat;
 use AdeMS\Dapur\User\Pintu;
+use AdeMS\Dapur\User\ProfilUser;
 use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\Sesi;
 use AdeMS\Dapur\User\SuratUser;
@@ -52,6 +53,9 @@ final class KelolaUserHandler implements RequestHandlerInterface
     public const SESI_SANDI_BARU = 'user.sandi_baru';
 
     public const JUMLAH_AKTIVITAS = 20;
+
+    /** Batas baris tab Aktivitas Terakhir di dashboard utama (tombol "Tampilkan lebih banyak"). */
+    public const AKTIVITAS_MAKS = 480;
 
     private const PANJANG_EMAIL_MAKS = 190;
     private const PANJANG_NAMA_MAKS  = 190;
@@ -110,6 +114,9 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 'sandiBaru' => is_array($baru) ? $baru : null,
                 'tampil'    => ($request->getQueryParams()['tampil'] ?? null) === self::TAMPIL_AKTIVITAS ? self::TAMPIL_AKTIVITAS : self::TAMPIL_AKSES,
                 'cari'      => self::kataCari($request->getQueryParams()['cari'] ?? null),
+                // Tab Aktivitas Terakhir di dashboard utama: saringan lingkup dan jumlah baris.
+                'mintaLingkup'    => is_string($request->getQueryParams()['lingkup'] ?? null) ? $request->getQueryParams()['lingkup'] : '',
+                'jumlahAktivitas' => self::jumlahAktivitas($request->getQueryParams()['jumlah'] ?? null),
             ]);
         }
 
@@ -507,6 +514,15 @@ final class KelolaUserHandler implements RequestHandlerInterface
         }
     }
 
+    /** Jumlah baris aktivitas dari ?jumlah=..., kelipatan JUMLAH_AKTIVITAS sampai AKTIVITAS_MAKS. */
+    private static function jumlahAktivitas(mixed $nilai): int
+    {
+        $n = is_string($nilai) && ctype_digit($nilai) ? (int) $nilai : self::JUMLAH_AKTIVITAS;
+        $n = intdiv(max(self::JUMLAH_AKTIVITAS, min(self::AKTIVITAS_MAKS, $n)), self::JUMLAH_AKTIVITAS) * self::JUMLAH_AKTIVITAS;
+
+        return $n;
+    }
+
     /** Kata pencarian dari ?cari=..., dirapikan dan dibatasi panjangnya. */
     private static function kataCari(mixed $nilai): string
     {
@@ -680,11 +696,28 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $cari   = is_string($data['cari'] ?? null) ? $data['cari'] : '';
         $daftar = [];
         $perId  = [];
+
+        // Foto dan nama yang tampil: foto/nama khusus website ini bila ada, selain itu milik akun.
+        $profil   = $this->daftar->profil();
+        $fotoAkun = $profil->fotoAkun();
+        $namaWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::NAMA) : [];
+        $fotoWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::FOTO) : [];
+        $tampil   = function (int $id, string $nama, string $email) use ($fotoAkun, $namaWeb, $fotoWeb): array {
+            $nama = $namaWeb[$id] ?? $nama;
+            $foto = $fotoWeb[$id] ?? $fotoAkun[$id] ?? '';
+
+            return [
+                'namaTampil' => $nama,
+                'foto'       => $foto === '' ? null : $this->pintu->alamatFoto($foto),
+                'inisial'    => User::inisialDari($nama, $email),
+            ];
+        };
+
         foreach ($this->daftar->userDiLingkup($lingkup) as $u) {
             $diri       = $u['id'] === $admin->id;
             $super      = $u['peran'] === DaftarUser::PERAN_ADMIN_SUPER;
             $terkunci   = $diri || ($super && ($diWebsite || $jumlahAdminSuper <= 1));
-            $baris      = $u + [
+            $baris      = $u + $tampil($u['id'], $u['nama'], $u['email']) + [
                 'diriSendiri'   => $diri,
                 'labelPeran'    => DaftarUser::label($u['peran']),
                 'bisaUbahPeran' => ! $terkunci,
@@ -694,13 +727,24 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 'login'         => $u['terakhir_masuk'] === null ? null : $this->waktu($u['terakhir_masuk']),
             ];
             $perId[$u['id']] = $baris;
-            if (self::cocok($cari, [$u['nama'], $u['email']])) {
+            if (self::cocok($cari, [$u['nama'], $baris['namaTampil'], $u['email']])) {
                 $daftar[] = $baris;
             }
         }
 
+        // Dashboard utama (admin super): perubahan di semua lingkup, bisa disaring per lingkup, dengan tombol "Tampilkan
+        // lebih banyak". Dashboard website: hanya website itu.
+        $aktivitasSemua  = $this->bisaLihatSemua($admin);
+        $pilihanLingkup  = $aktivitasSemua ? $this->riwayatAkun->daftarLingkup() : [];
+        $saring          = is_string($data['mintaLingkup'] ?? null) && in_array($data['mintaLingkup'], $pilihanLingkup, true) ? $data['mintaLingkup'] : '';
+        $jumlah          = $aktivitasSemua ? (int) ($data['jumlahAktivitas'] ?? self::JUMLAH_AKTIVITAS) : self::JUMLAH_AKTIVITAS;
+        $barisAktivitas  = $aktivitasSemua
+            ? $this->riwayatAkun->semua($jumlah + 1, $saring === '' ? null : $saring)
+            : $this->riwayatAkun->untukLingkup($lingkup, self::JUMLAH_AKTIVITAS);
+        $aktivitasLagi   = count($barisAktivitas) > $jumlah && $jumlah < self::AKTIVITAS_MAKS ? $jumlah + self::JUMLAH_AKTIVITAS : null;
+
         $aktivitas = [];
-        foreach ($this->riwayatAkun->untukLingkup($lingkup, self::JUMLAH_AKTIVITAS) as $b) {
+        foreach (array_slice($barisAktivitas, 0, $jumlah) as $b) {
             $aktivitas[] = $b + [
                 'label'            => RiwayatAkun::label($b['peristiwa']),
                 'waktuSetempat'    => $this->waktu($b['waktu']),
@@ -731,7 +775,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 $a['akses']  = array_map(static fn (array $x): array => $x + ['labelPeran' => DaftarUser::label($x['peran'])], $a['akses']);
                 // Akses ke dashboard utama (peran, cabut, undangan) diatur dari baris yang sama.
                 $d           = $perId[$a['id']] ?? null;
-                $semuaAkun[] = $a + [
+                $semuaAkun[] = $a + $tampil($a['id'], $a['nama'], $a['email']) + [
                     'diriSendiri'   => $a['id'] === $admin->id,
                     'login'         => $a['terakhir_masuk'] === null ? null : $this->waktu($a['terakhir_masuk']),
                     'adminSuper'    => $super,
@@ -751,6 +795,10 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'semuaAkun'  => $semuaAkun,
             'jumlahSemua' => $jumlahSemua,
             'websiteTersedia' => $website,
+            'aktivitasSemua'  => $aktivitasSemua,
+            'pilihanLingkup'  => $pilihanLingkup,
+            'saringLingkup'   => $saring,
+            'aktivitasLagi'   => $aktivitasLagi,
         ] + $this->dataKosong(), $status);
     }
 
@@ -769,6 +817,10 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'sandiBaru'     => null,
             'daftarUser'    => [],
             'aktivitas'     => [],
+            'aktivitasSemua' => false,
+            'pilihanLingkup' => [],
+            'saringLingkup' => '',
+            'aktivitasLagi' => null,
             'peranTersedia' => array_combine(
                 DaftarUser::pilihanPeran($this->pintu->lingkup),
                 array_map(DaftarUser::label(...), DaftarUser::pilihanPeran($this->pintu->lingkup)),
@@ -780,6 +832,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             'cari'          => '',
             'lingkup'       => $this->pintu->lingkup,
             'alamatKelola'  => $this->pintu->alamatKelolaUser(),
+            'alamatProfil'  => $this->pintu->alamatProfil(),
             'zonaWaktu'     => $this->zonaWaktu->getName(),
             'formEmail'     => '',
             'formNama'      => '',
