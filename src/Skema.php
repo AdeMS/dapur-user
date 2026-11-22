@@ -46,10 +46,23 @@ final class Skema
                 $tabel->akses()   => ['email_id' => 'BIGINT UNSIGNED NULL'],
                 // 2.2: email yang dipakai untuk login (akun bisa punya beberapa email).
                 $tabel->riwayat() => ['email' => "VARCHAR(190) NOT NULL DEFAULT ''"],
+                // 2.3: nama yang diisi sendiri oleh user (nama lengkap tetap di kolom nama) dan foto akun.
+                $tabel->user()    => [
+                    'nama_depan'    => "VARCHAR(100) NOT NULL DEFAULT ''",
+                    'nama_tengah'   => "VARCHAR(100) NOT NULL DEFAULT ''",
+                    'nama_belakang' => "VARCHAR(100) NOT NULL DEFAULT ''",
+                    'foto'          => "VARCHAR(64) NOT NULL DEFAULT ''",
+                ],
             ],
             'SQLite' => [
                 $tabel->akses()   => ['email_id' => 'INTEGER NULL'],
                 $tabel->riwayat() => ['email' => "TEXT NOT NULL DEFAULT ''"],
+                $tabel->user()    => [
+                    'nama_depan'    => "TEXT NOT NULL DEFAULT ''",
+                    'nama_tengah'   => "TEXT NOT NULL DEFAULT ''",
+                    'nama_belakang' => "TEXT NOT NULL DEFAULT ''",
+                    'foto'          => "TEXT NOT NULL DEFAULT ''",
+                ],
             ],
             default  => throw new RuntimeException("Modul user belum mendukung database {$platform}."),
         };
@@ -71,6 +84,10 @@ final class Skema
                 aktif TINYINT(1) NOT NULL DEFAULT 1,
                 dibuat_pada DATETIME NOT NULL,
                 terakhir_masuk DATETIME NULL,
+                nama_depan VARCHAR(100) NOT NULL DEFAULT '',
+                nama_tengah VARCHAR(100) NOT NULL DEFAULT '',
+                nama_belakang VARCHAR(100) NOT NULL DEFAULT '',
+                foto VARCHAR(64) NOT NULL DEFAULT '',
                 UNIQUE KEY {$q("uq_{$a}user_email")} (email)
             ) {$opsi}",
             $t->akses() => "CREATE TABLE IF NOT EXISTS {$q($t->akses())} (
@@ -155,6 +172,16 @@ final class Skema
                 CONSTRAINT {$q("fk_{$a}user_email_user")} FOREIGN KEY (user_id)
                     REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
             ) {$opsi}",
+            $t->profil() => "CREATE TABLE IF NOT EXISTS {$q($t->profil())} (
+                user_id BIGINT UNSIGNED NOT NULL,
+                lingkup VARCHAR(190) NOT NULL DEFAULT '',
+                kunci VARCHAR(50) NOT NULL,
+                nilai TEXT NOT NULL,
+                diubah_pada DATETIME NOT NULL,
+                PRIMARY KEY (user_id, lingkup, kunci),
+                CONSTRAINT {$q("fk_{$a}user_profil_user")} FOREIGN KEY (user_id)
+                    REFERENCES {$q($t->user())} (id) ON DELETE CASCADE
+            ) {$opsi}",
         ];
     }
 
@@ -171,7 +198,11 @@ final class Skema
                 kata_sandi TEXT NOT NULL,
                 aktif INTEGER NOT NULL DEFAULT 1,
                 dibuat_pada TEXT NOT NULL,
-                terakhir_masuk TEXT NULL
+                terakhir_masuk TEXT NULL,
+                nama_depan TEXT NOT NULL DEFAULT '',
+                nama_tengah TEXT NOT NULL DEFAULT '',
+                nama_belakang TEXT NOT NULL DEFAULT '',
+                foto TEXT NOT NULL DEFAULT ''
             )",
             $t->akses() => "CREATE TABLE IF NOT EXISTS {$q($t->akses())} (
                 user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
@@ -229,6 +260,14 @@ final class Skema
                 email TEXT NOT NULL UNIQUE,
                 terverifikasi TEXT NOT NULL,
                 dibuat_pada TEXT NOT NULL
+            )",
+            $t->profil() => "CREATE TABLE IF NOT EXISTS {$q($t->profil())} (
+                user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
+                lingkup TEXT NOT NULL DEFAULT '',
+                kunci TEXT NOT NULL,
+                nilai TEXT NOT NULL,
+                diubah_pada TEXT NOT NULL,
+                PRIMARY KEY (user_id, lingkup, kunci)
             )",
         ];
     }
