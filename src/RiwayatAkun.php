@@ -29,6 +29,10 @@ final class RiwayatAkun
     public const HAPUS_EMAIL   = 'hapus_email';
     public const EMAIL_UTAMA   = 'email_utama';
     public const EMAIL_WEBSITE = 'email_website';
+    /** 2.3: foto akun atau foto di website diganti atau dihapus. */
+    public const UBAH_FOTO     = 'ubah_foto';
+    /** 2.3: isian Tentang atau nama tampilan di website diubah. */
+    public const UBAH_PROFIL   = 'ubah_profil';
 
     /** Label peristiwa untuk tampilan. */
     private const LABEL = [
@@ -45,6 +49,8 @@ final class RiwayatAkun
         self::HAPUS_EMAIL   => 'Hapus email',
         self::EMAIL_UTAMA   => 'Email utama',
         self::EMAIL_WEBSITE => 'Email website',
+        self::UBAH_FOTO     => 'Ubah foto',
+        self::UBAH_PROFIL   => 'Ubah profil',
     ];
 
     private const PANJANG_TEKS = 255;
@@ -128,6 +134,31 @@ final class RiwayatAkun
     public function untukLingkup(string $lingkup, int $jumlah = 20): array
     {
         return $this->baca('r.lingkup = ?', [$lingkup], $jumlah, true);
+    }
+
+    /**
+     * Riwayat semua lingkup (dashboard utama, untuk admin super), terbaru dahulu; bisa disaring satu lingkup. Pelaku dan
+     * sasaran ditampilkan dengan email utama, karena admin super melihat semua akun.
+     *
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     */
+    public function semua(int $jumlah = 20, ?string $lingkup = null): array
+    {
+        return $lingkup === null ? $this->baca('1 = 1', [], $jumlah) : $this->baca('r.lingkup = ?', [$lingkup], $jumlah);
+    }
+
+    /**
+     * Lingkup yang punya riwayat, untuk pilihan saringan; 'dashboard' lebih dulu, lalu urut nama.
+     *
+     * @return list<string>
+     */
+    public function daftarLingkup(): array
+    {
+        $hasil = $this->db->query("SELECT DISTINCT lingkup FROM {$this->tabel}", []);
+        $semua = array_map(static fn (array $b): string => (string) $b['lingkup'], $hasil instanceof ResultSetInterface ? $hasil->toArray() : []);
+        usort($semua, static fn (string $a, string $b): int => [$a !== Konteks::LINGKUP_UTAMA, $a] <=> [$b !== Konteks::LINGKUP_UTAMA, $b]);
+
+        return $semua;
     }
 
     /**
