@@ -1,33 +1,46 @@
 <?php
 /**
- * Isi halaman profil: kartu user (avatar, nama, email, peran, status), hanya untuk dibaca. Nama, email, kata
- * sandi, aktivitas, dan riwayat masuk diatur di halaman Pengaturan & Privasi (user::pengaturan-isi), yang
- * tautannya ada di kartu ini.
+ * Isi halaman profil, hanya untuk dibaca: kartu user (foto, nama, email, peran, status) dan kartu Tentang
+ * (pendidikan, lokasi, keahlian, biografi). Bisa profil sendiri, atau profil rekan di website yang sama
+ * (?id=<nomor>). Nama, foto, dan Tentang diatur di Pengaturan & Privasi (user::pengaturan-isi).
  *
  * @var AdeMS\Dapur\User\User $user
- * @var string|null $emailTampil  email yang ditampilkan (email website ini); bawaan email utama
- * @var string|null $pesan        pesan berhasil
- * @var string|null $galat        pesan kesalahan
- * @var array{nilai: string, label: string}|null $peran  peran di lingkup ini
- * @var bool $aktif
+ * @var array<string, mixed>|null $profil  id, nama, email, foto, inisial, peran, aktif, tentang, diri
+ * @var bool $tidakDitemukan              profil rekan tidak ada atau tidak punya akses ke lingkup ini
+ * @var string|null $pesan                pesan berhasil
+ * @var string|null $galat                pesan kesalahan
  * @var string|null $alamatPengaturan
+ * @var string|null $emailTampil          (sebelum 2.3) email yang ditampilkan
  */
 $warnaPeran = [
     'admin_super' => 'warning',
     'admin_web'   => 'primary',
     'anggota'     => 'secondary',
 ];
-$peran = $this->peran ?? null;
-$aktif = $this->aktif ?? true;
+// Template dari modul yang belum meneruskan $profil (sebelum 2.3): pakai data user yang login.
+$profil = $this->profil ?? (($this->tidakDitemukan ?? false) ? null : [
+    'nama'    => $this->user->nama,
+    'email'   => $this->emailTampil ?? $this->user->email,
+    'foto'    => null,
+    'inisial' => $this->user->inisial(),
+    'peran'   => $this->peran ?? null,
+    'aktif'   => $this->aktif ?? true,
+    'tentang' => [],
+    'diri'    => true,
+]);
 ?>
 <style>
     .user-profil-avatar { width: 6rem; height: 6rem; font-size: 2.25rem; }
+    .user-profil-foto { cursor: zoom-in; transition: filter .15s; }
+    .user-profil-foto:hover { filter: brightness(.85); }
+    .user-profil-foto-besar { width: min(20rem, 80vw); height: auto; aspect-ratio: 1; border-radius: 50%; object-fit: cover; }
     .user-profil-data dt { font-weight: 500; }
+    .user-profil-tentang dd { white-space: pre-line; }
 </style>
 <div class="container py-4 user-profil">
     <div class="card mb-4">
         <div class="card-body py-3">
-            <h1 class="h4 mb-0">Profil</h1>
+            <h1 class="h4 mb-0"><?= $profil === null || $profil['diri'] ? 'Profil' : 'Profil ' . $this->escapeHtml($profil['nama']) ?></h1>
         </div>
     </div>
 <?php if ($this->pesan ?? null) : ?>
@@ -48,32 +61,81 @@ $aktif = $this->aktif ?? true;
 <?php if ($this->galat ?? null) : ?>
     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
 <?php endif ?>
-    <div class="row">
-        <div class="col-12 col-md-8 col-lg-6 col-xl-5">
+<?php if ($profil === null) : ?>
+    <div class="alert alert-warning" role="alert">User tidak ditemukan di sini.</div>
+</div>
+<?php return ?>
+<?php endif ?>
+    <div class="row g-4">
+        <div class="col-12 col-md-6 col-xl-5">
             <div class="card">
                 <div class="card-body">
                     <div class="text-center mb-3">
-                        <span class="user-avatar user-profil-avatar mb-3" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
-                        <h2 class="h5 mb-0"><?= $this->escapeHtml($this->user->nama) ?></h2>
-                        <div class="text-body-secondary text-break"><?= $this->escapeHtml($this->emailTampil ?? $this->user->email) ?></div>
+<?php if ($profil['foto'] !== null) : ?>
+                        <div class="mb-3">
+                            <button type="button" class="btn p-0 border-0 rounded-circle user-profil-foto" data-bs-toggle="modal" data-bs-target="#user-profil-popup-foto" aria-label="Lihat foto <?= $this->escapeHtmlAttr($profil['nama']) ?>">
+                                <?= $this->partial('user::avatar', ['foto' => $profil['foto'], 'inisial' => $profil['inisial'], 'kelas' => 'user-profil-avatar']) ?>
+                            </button>
+                        </div>
+<?php else : ?>
+                        <div class="mb-3"><?= $this->partial('user::avatar', ['foto' => $profil['foto'], 'inisial' => $profil['inisial'], 'kelas' => 'user-profil-avatar']) ?></div>
+<?php endif ?>
+                        <h2 class="h5 mb-0"><?= $this->escapeHtml($profil['nama']) ?></h2>
+                        <div class="text-body-secondary text-break"><?= $this->escapeHtml($profil['email']) ?></div>
                     </div>
                     <dl class="user-profil-data mb-3">
-<?php if ($peran) : ?>
+<?php if ($profil['peran']) : ?>
                         <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                             <dt>Peran</dt>
-                            <dd class="mb-0"><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaPeran[$peran['nilai']] ?? 'info') ?>"><?= $this->escapeHtml($peran['label']) ?></span></dd>
+                            <dd class="mb-0"><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaPeran[$profil['peran']['nilai']] ?? 'info') ?>"><?= $this->escapeHtml($profil['peran']['label']) ?></span></dd>
                         </div>
 <?php endif ?>
                         <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                             <dt>Status</dt>
-                            <dd class="mb-0"><span class="badge text-bg-<?= $aktif ? 'success' : 'secondary' ?>"><?= $aktif ? 'Aktif' : 'Nonaktif' ?></span></dd>
+                            <dd class="mb-0"><span class="badge text-bg-<?= $profil['aktif'] ? 'success' : 'secondary' ?>"><?= $profil['aktif'] ? 'Aktif' : 'Nonaktif' ?></span></dd>
                         </div>
                     </dl>
-<?php if ($this->alamatPengaturan ?? null) : ?>
+<?php if ($profil['diri'] && ($this->alamatPengaturan ?? null)) : ?>
                     <a class="btn btn-success w-100" href="<?= $this->escapeHtmlAttr($this->alamatPengaturan . '?tab=akun') ?>"><i class="bi bi-gear me-2"></i>Pengaturan akun</a>
 <?php endif ?>
                 </div>
             </div>
         </div>
+        <div class="col-12 col-md-6 col-xl-7">
+            <div class="card">
+                <div class="card-body">
+<?php $ubahProfil = $profil['diri'] && ($this->alamatPengaturan ?? null) ? $this->alamatPengaturan . '?tab=profil' : null ?>
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <h2 class="h5 card-title">Tentang <?= $this->escapeHtml($profil['nama']) ?></h2>
+<?php if ($ubahProfil !== null) : ?>
+                        <a class="btn btn-sm btn-outline-secondary text-nowrap" href="<?= $this->escapeHtmlAttr($ubahProfil) ?>"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Ubah</a>
+<?php endif ?>
+                    </div>
+<?php if ($profil['tentang'] === []) : ?>
+                    <p class="text-body-secondary mb-0"><?= $profil['diri'] ? 'Anda belum mengisi bagian ini. Isi pendidikan, lokasi, keahlian, dan biografi agar rekan di website ini lebih mengenal Anda.' : 'Belum diisi.' ?></p>
+<?php else : ?>
+                    <dl class="user-profil-tentang mb-0">
+<?php foreach ($profil['tentang'] as $t) : ?>
+                        <dt class="fw-semibold"><?= $this->escapeHtml($t['label']) ?></dt>
+                        <dd class="mb-3"><?= $this->escapeHtml($t['nilai']) ?></dd>
+<?php endforeach ?>
+                    </dl>
+<?php endif ?>
+                </div>
+            </div>
+        </div>
     </div>
+<?php if ($profil['foto'] !== null) : ?>
+    <div class="modal fade" id="user-profil-popup-foto" tabindex="-1" aria-labelledby="user-profil-popup-foto-judul" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="user-profil-popup-foto-judul"><?= $this->escapeHtml($profil['nama']) ?></h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body text-center"><img class="user-profil-foto-besar" src="<?= $this->escapeHtmlAttr($profil['foto']) ?>" alt="Foto <?= $this->escapeHtmlAttr($profil['nama']) ?>" loading="lazy"></div>
+            </div>
+        </div>
+    </div>
+<?php endif ?>
 </div>
