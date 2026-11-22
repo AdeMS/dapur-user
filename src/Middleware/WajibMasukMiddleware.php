@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Middleware;
 
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\Identitas;
 use AdeMS\Dapur\User\Pintu;
 use AdeMS\Dapur\User\Sesi;
 use AdeMS\Dapur\User\User;
@@ -39,6 +40,9 @@ final class WajibMasukMiddleware implements MiddlewareInterface
      * itu (Pengaturan & Privasi), atau email utama.
      */
     public const ATRIBUT_EMAIL = 'user.email_tampil';
+
+    /** Nama atribut request berisi Identitas user di lingkup ini: nama, email, dan foto yang ditampilkan. */
+    public const ATRIBUT_IDENTITAS = 'user.identitas';
 
     public function __construct(
         private readonly DaftarUser $daftar,
@@ -83,13 +87,13 @@ final class WajibMasukMiddleware implements MiddlewareInterface
 
         $sesi->simpan(self::SESI_TERAKHIR, time());
 
-        $email = $this->daftar->email();
-        $tampil = $email->tersedia() ? $email->emailLingkup($user->id, $this->pintu->lingkup) : $user->email;
+        $identitas = Identitas::untuk($user, $this->pintu->lingkup, $this->daftar, $this->pintu);
 
         return $handler->handle(
             $request->withAttribute(User::class, $user)
                 ->withAttribute(self::ATRIBUT_PERAN, $peran)
-                ->withAttribute(self::ATRIBUT_EMAIL, $tampil),
+                ->withAttribute(self::ATRIBUT_EMAIL, $identitas->email)
+                ->withAttribute(self::ATRIBUT_IDENTITAS, $identitas),
         );
     }
 
