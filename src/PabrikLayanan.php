@@ -7,9 +7,11 @@ namespace AdeMS\Dapur\User;
 use AdeMS\Dapur\Email\PengirimEmail;
 use AdeMS\Dapur\Email\SuratTemplat;
 use AdeMS\Dapur\User\Handler\AturSandiHandler;
+use AdeMS\Dapur\User\Handler\FotoHandler;
 use AdeMS\Dapur\User\Handler\HalamanPublik;
 use AdeMS\Dapur\User\Handler\KelolaUserHandler;
 use AdeMS\Dapur\User\Handler\KeluarHandler;
+use AdeMS\Dapur\User\Handler\LokasiHandler;
 use AdeMS\Dapur\User\Handler\LupaSandiHandler;
 use AdeMS\Dapur\User\Handler\MasukHandler;
 use AdeMS\Dapur\User\Handler\ProfilHandler;
@@ -42,6 +44,7 @@ final class PabrikLayanan
             RiwayatAkun::class => new RiwayatAkun($c->get(Adapter::class), self::tabel($c)),
             PengaturanUser::class => new PengaturanUser($c->get(Adapter::class), self::tabel($c)),
             TokenUser::class => new TokenUser($c->get(Adapter::class), self::tabel($c)),
+            FotoUser::class => new FotoUser($c->get(Pengaturan::class)->folderFoto),
             SuratUser::class => new SuratUser(
                 $c->get(PengirimEmail::class),
                 $c->get(SuratTemplat::class),
@@ -95,7 +98,53 @@ final class PabrikLayanan
             $c->get(TokenUser::class),
             $c->get(SuratUser::class),
             self::namaWebsite($c),
+            ProfilHandler::HALAMAN_PROFIL,
+            $c->get(Pengaturan::class)->domainEmail,
+            $c->get(FotoUser::class),
+            self::sumberLokasi($c),
         );
+    }
+
+    /**
+     * Foto profil (`<alamat dasar>/foto/<kode>`), di belakang WajibMasukMiddleware untuk pintu yang sama.
+     */
+    public static function foto(ContainerInterface $c, Pintu $pintu): FotoHandler
+    {
+        return new FotoHandler($c->get(DaftarUser::class), $c->get(FotoUser::class), $pintu);
+    }
+
+    /**
+     * Saran kota untuk isian Lokasi (`<alamat dasar>/lokasi`), di belakang WajibMasukMiddleware untuk pintu yang
+     * sama. Menjawab 404 bila pengaturan 'user' => ['lokasi' => ...] tidak ada.
+     */
+    public static function lokasi(ContainerInterface $c): LokasiHandler
+    {
+        return new LokasiHandler(self::sumberLokasi($c));
+    }
+
+    /**
+     * Sumber saran Lokasi, atau null bila tidak ada. Urutannya: layanan DaftarLokasi::class bila didaftarkan modul
+     * lain (misalnya modul wilayah), lalu SumberLokasi dari pengaturan 'user' => ['lokasi' => ...]. Tabel kota dibaca
+     * lewat koneksi database Dapur, kecuali 'lokasi' => ['adapter' => '<nama layanan>'] menunjuk koneksi lain.
+     */
+    public static function sumberLokasi(ContainerInterface $c): ?DaftarLokasi
+    {
+        if ($c->has(DaftarLokasi::class)) {
+            $layanan = $c->get(DaftarLokasi::class);
+            if (! $layanan instanceof DaftarLokasi) {
+                throw new RuntimeException('Layanan ' . DaftarLokasi::class . ' harus menerapkan interface tersebut.');
+            }
+
+            return $layanan;
+        }
+
+        $config  = self::config($c);
+        $adapter = is_array($config['lokasi'] ?? null) ? ($config['lokasi']['adapter'] ?? Adapter::class) : Adapter::class;
+        if (! is_string($adapter) || $adapter === '') {
+            throw new RuntimeException("Pengaturan 'lokasi.adapter' user harus nama layanan koneksi database.");
+        }
+
+        return ($config['lokasi'] ?? null) === null ? null : SumberLokasi::dariPengaturan($c->get($adapter), $config);
     }
 
     /**
@@ -121,6 +170,8 @@ final class PabrikLayanan
             self::namaWebsite($c),
             ProfilHandler::HALAMAN_PENGATURAN,
             $c->get(Pengaturan::class)->domainEmail,
+            $c->get(FotoUser::class),
+            self::sumberLokasi($c),
         );
     }
 
