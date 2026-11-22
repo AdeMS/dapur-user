@@ -539,4 +539,51 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame(403, $hasil->getStatusCode());
         self::assertSame([], $this->renderer->data['websiteTersedia']);
     }
+
+    public function testDashboardUtamaMelihatAktivitasSemuaLingkup(): void
+    {
+        $super = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
+        $this->daftar->tambahAkses($super, 'dashboard');
+        $this->riwayatAkun->catat(RiwayatAkun::BERI_AKSES, $this->admin, $this->budi, self::LINGKUP, 'peran anggota');
+        $this->riwayatAkun->catat(RiwayatAkun::UBAH_NAMA, $super, $super, 'dashboard', 'A → B');
+        for ($i = 0; $i < 25; $i++) {
+            $this->riwayatAkun->catat(RiwayatAkun::UBAH_PROFIL, $this->budi, $this->budi, 'blog.contoh.com', "ubah {$i}");
+        }
+
+        $utama   = new Pintu('dashboard', '/', 3600, 'layout::uji');
+        $handler = new KelolaUserHandler($this->daftar, $this->riwayatAkun, new PenyajiDasar($this->renderer, $utama), $utama, new DateTimeZone('UTC'), true);
+        $lihat   = function (array $query) use ($handler, $super): array {
+            $handler->handle(
+                (new ServerRequest([], [], '/user', 'GET'))
+                    ->withQueryParams(['tampil' => 'aktivitas'] + $query)
+                    ->withAttribute(Sesi::class, $this->sesi)
+                    ->withAttribute(User::class, $this->daftar->cariId($super))
+                    ->withAttribute(WajibMasukMiddleware::ATRIBUT_PERAN, 'admin_super'),
+            );
+
+            return $this->renderer->data;
+        };
+
+        $data = $lihat([]);
+        self::assertTrue($data['aktivitasSemua']);
+        self::assertSame(['dashboard', 'blog.contoh.com', self::LINGKUP], $data['pilihanLingkup']);
+        self::assertCount(20, $data['aktivitas']);
+        self::assertSame(40, $data['aktivitasLagi']);
+
+        $data = $lihat(['jumlah' => '40']);
+        self::assertCount(27, $data['aktivitas']);
+        self::assertNull($data['aktivitasLagi']);
+        self::assertContains(self::LINGKUP, array_column($data['aktivitas'], 'lingkup'), 'Perubahan di website ikut tampil.');
+        self::assertContains('budi@contoh.com', array_column($data['aktivitas'], 'sasaran'));
+
+        $data = $lihat(['lingkup' => self::LINGKUP]);
+        self::assertSame([self::LINGKUP], array_unique(array_column($data['aktivitas'], 'lingkup')));
+        self::assertSame(self::LINGKUP, $data['saringLingkup']);
+        self::assertSame('', $lihat(['lingkup' => 'asing.com'])['saringLingkup'], 'Lingkup tak dikenal diabaikan.');
+
+        // Dashboard website tetap hanya lingkupnya sendiri, tanpa saringan.
+        $this->get();
+        self::assertFalse($this->renderer->data['aktivitasSemua']);
+        self::assertSame([self::LINGKUP], array_unique(array_column($this->renderer->data['aktivitas'], 'lingkup')));
+    }
 }
