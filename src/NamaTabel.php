@@ -77,4 +77,10 @@ final class NamaTabel
     {
         return $this->awalan . 'user_email';
     }
+
+    /** Isian profil: Tentang (lingkup kosong) dan profil per website (nama tampilan, foto). */
+    public function profil(): string
+    {
+        return $this->awalan . 'user_profil';
+    }
 }
