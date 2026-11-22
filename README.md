@@ -41,6 +41,33 @@ vendor/bin/dapur-user pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
 
+### Memperbarui dari 2.2 ke 2.3
+
+Versi 2.3 menambah profil: nama depan, tengah, dan belakang, **foto**, bagian **Tentang**, dan **profil di website**
+(nama dan foto khusus satu website). Ada tabel baru `user_profil` dan kolom baru `nama_depan`, `nama_tengah`,
+`nama_belakang`, serta `foto` di tabel `user`. Jalankan dari folder inti:
+
+```bash
+composer update
+vendor/bin/dapur-user pasang
+```
+
+lalu hapus cache konfigurasi. Sebelum `pasang`, halaman berjalan seperti 2.2 (tanpa bagian profil baru).
+
+Foto disimpan di `data/upload/avatar` milik folder inti (lihat [Foto profil](#foto-profil)). Folder ini harus bisa
+ditulis web server. Bila `data/` inti tidak bisa ditulis web server, buat lebih dulu `data/upload` dengan grup web
+server dan izin `2770`, misalnya:
+
+```bash
+mkdir data/upload && chgrp <grup-web-server> data/upload && chmod 2770 data/upload
+```
+
+Sampai folder itu siap, halaman Pengaturan & Privasi menulis bahwa foto belum bisa diunggah; bagian lain tetap
+berjalan. Modul yang memasang halaman user sendiri perlu menambah route foto dan lokasi (lihat
+[Memakai login di modul lain](#memakai-login-di-modul-lain)).
+
+Saran kota untuk isian Lokasi bersifat pilihan; lihat [Saran kota untuk Lokasi](#saran-kota-untuk-lokasi).
+
 ### Memperbarui dari 2.1 ke 2.2
 
 Versi 2.2 membuat satu akun bisa punya beberapa email (lihat [Satu akun, banyak email](#satu-akun-banyak-email)),
@@ -132,6 +159,8 @@ return [
         'zona_waktu'   => 'Asia/Jakarta', // zona waktu tampilan, bawaan zona waktu PHP
         'alamat_website' => 'https://contoh.com', // alamat untuk tautan di email; bawaan dari request
         'domain_email' => ['kantor.co.id'],       // hanya email domain ini di website ini; bawaan semua email
+        'folder_foto'  => '/path/foto',           // folder foto profil; bawaan data/upload/avatar di folder inti
+        'lokasi'       => [/* ... */],            // saran kota untuk isian Lokasi; lihat "Saran kota untuk Lokasi"
     ],
 ];
 ```
@@ -194,15 +223,72 @@ di terminal; dari skrip, kata sandi tidak diubah.
 ## Profil
 
 Halaman profil berada di `<alamat dasar>/profil`, misalnya `/profil` di dashboard utama atau `/dashboard/profil`
-di dashboard website. Tautannya ada di submenu avatar. Halaman ini hanya untuk dibaca: kartu user (avatar, nama,
-email, peran, status) dengan tombol **Pengaturan akun**.
+di dashboard website. Tautannya ada di submenu avatar. Halaman ini hanya untuk dibaca: kartu user (foto, nama,
+email, peran, status) dengan tombol **Pengaturan akun**, dan kartu **Tentang** (pendidikan, lokasi, keahlian,
+biografi).
+
+**Profil rekan:** `<alamat dasar>/profil?id=<nomor>` menampilkan profil user lain, hanya bila user itu punya akses
+ke lingkup yang sama; selain itu "User tidak ditemukan di sini" (404). Nama di daftar user halaman User membuka
+halaman ini. Modul lain bisa menautkannya juga.
+
+### Foto profil
+
+Foto diunggah di Pengaturan & Privasi: JPG, PNG, atau WebP paling besar 2 MB. Foto dibuat ulang dengan ekstensi PHP
+GD menjadi gambar persegi 256 piksel berformat WebP, sehingga metadata seperti EXIF dan lokasi GPS ikut terbuang.
+File disimpan di luar folder public (pengaturan `folder_foto`, bawaan `data/upload/avatar` di folder inti, izin
+`2770`) dengan nama acak, dan disajikan lewat `<alamat dasar>/foto/<kode>` hanya kepada user yang login dan berbagi
+lingkup dengan pemilik foto. Admin super di dashboard utama melihat semua foto. Foto baru selalu mendapat nama baru,
+sehingga browser boleh menyimpannya lama, dan foto lama dihapus.
+
+### Saran kota untuk Lokasi
+
+Isian **Lokasi** di bagian Tentang selalu boleh diisi teks bebas. Bila Anda punya tabel daftar kota di database,
+isian itu bisa menampilkan saran saat diketik (minimal 2 huruf), misalnya "Kota Bandung, Jawa Barat, Indonesia".
+Memilih saran juga menyimpan **nomor kota** (kunci `lokasi_id` di tabel `user_profil`), yang bisa dipakai fitur lain
+nanti; bila teks diubah sesudah memilih, Lokasi kembali menjadi teks bebas. Tanpa pengaturan di bawah, tidak ada
+saran.
+
+```php
+return [
+    'user' => [
+        'lokasi' => [
+            // Hanya 'kota' => 'tabel' yang wajib. Kolom bawaan: 'id' => 'id', 'nama' => 'nama'.
+            'kota'     => ['tabel' => 'dunia.kota', 'nama' => 'name', 'induk' => 'provinsi_id'],
+            'provinsi' => ['tabel' => 'dunia.provinsi', 'nama' => 'name', 'induk' => 'negara_id'],
+            'negara'   => ['tabel' => 'dunia.negara', 'nama' => 'name', 'kode' => 'iso2'],
+            'awalan'       => ['Kota ', 'Kabupaten '], // "Band" juga menemukan "Kota Bandung"
+            'negara_utama' => 'ID',                    // kota negara ini disarankan lebih dulu
+            // 'adapter' => 'nama-layanan-koneksi',   // bila tabel kota ada di koneksi database lain
+        ],
+    ],
+];
+```
+
+- Tabel kota boleh berada di **database lain pada server yang sama**: tulis `database.tabel`, lalu beri akun
+  database Dapur hak baca, misalnya `GRANT SELECT ON dunia.* TO '<akun>'@'<host>';`. Satu koneksi cukup; koneksi
+  terpisah (`'adapter'`) hanya perlu bila tabel kota ada di server lain atau memakai akun lain.
+- Pencarian memakai awalan nama (`LIKE 'Band%'`), jadi **buat indeks pada kolom nama kota** agar tetap cepat di
+  tabel besar, misalnya `CREATE INDEX name ON dunia.kota (name);`. Awalan seperti "Kota " dan "Kabupaten " dicoba
+  juga, dan saran diurutkan menurut nama tanpa awalan itu.
+- Saran diambil dari `<alamat dasar>/lokasi?cari=...` (JSON), paling banyak 5 kota per pencarian, hanya untuk user
+  yang login, paling banyak 60 pencarian per menit per session.
+- Sumber saran bisa diganti modul lain: daftarkan layanan bernama `AdeMS\Dapur\User\DaftarLokasi` (interface
+  dengan `cari()` dan `ambil()`) di container; layanan itu dipakai lebih dulu daripada pengaturan `'lokasi'`.
+
+### Profil di website
+
+Di dashboard website, Pengaturan & Privasi punya bagian **Profil di website ini**: **nama** dan **foto** khusus
+website itu. Keduanya hanya terlihat di website tersebut (menu avatar, Profil, daftar user, profil rekan) dan
+menggantikan nama dan foto akun di sana. Kosongkan untuk kembali memakai nama dan foto akun. Riwayat akun tetap
+memakai nama akun.
 
 ## Pengaturan & Privasi
 
 Halaman `<alamat dasar>/pengaturan` (tautan "Pengaturan & Privasi" di submenu avatar) berisi tiga tab, yang bisa
 dibuka langsung lewat `?tab=akun|aktivitas|riwayat`:
 
-- **Akun Saya**: mengubah nama (tombol Simpan dan Batal), **Email saya** (lihat
+- **Akun Saya**: foto (Unggah/Ganti dan Hapus), **nama depan, tengah, dan belakang** yang diisi sendiri (nama
+  lengkap disusun dari ketiganya; sebelum diisi, nama lama tetap dipakai), **Email saya** (lihat
   [Satu akun, banyak email](#satu-akun-banyak-email)), dan tombol yang membuka popup:
   - **Ubah** di samping email utama, bila pengiriman email aktif (lihat [Email](#email));
   - **Tambah email**, bila pengiriman email aktif;
@@ -210,6 +296,9 @@ dibuka langsung lewat `?tab=akun|aktivitas|riwayat`:
     Setelah berhasil, session di perangkat lain berakhir, sedangkan perangkat yang dipakai tetap login.
 
   Bila isian di popup salah, halaman dimuat ulang dengan popup itu terbuka bersama pesannya.
+
+  Di bawahnya ada **Tentang saya** (pendidikan, lokasi, keahlian, biografi), yang bisa dilihat rekan di website yang
+  sama, dan di dashboard website juga **Profil di website ini** (lihat [Profil di website](#profil-di-website)).
 - **Aktivitas**: 20 perubahan akun terakhir, baik perubahan pada akun user itu maupun perubahan yang ia lakukan
   pada akun lain. Email admin yang mengubah akunnya tidak ditampilkan (cukup "Admin").
 - **Riwayat masuk**: 20 catatan login terakhir, dengan perangkat yang diringkas (misalnya `Edge 157 · Windows`).
@@ -300,7 +389,10 @@ di dashboard website, dan hanya bisa dibuka admin. Di halaman ini admin bisa:
 - **mengaktifkan atau menonaktifkan akun**, hanya di dashboard utama. Akun nonaktif tidak bisa login di lingkup
   mana pun, dan session yang sedang berjalan langsung berakhir. Karena berlaku di semua website, admin website
   tidak bisa melakukannya.
-- melihat **aktivitas terakhir** di lingkup ini, di tab tersendiri (`<alamat dasar>/user?tampil=aktivitas`).
+- melihat **aktivitas terakhir** di lingkup ini, di tab tersendiri (`<alamat dasar>/user?tampil=aktivitas`). Di
+  dashboard utama, admin super melihat perubahan di **semua lingkup** (dashboard dan semua website) dengan kolom
+  Lingkup, pilihan saringan per lingkup (`&lingkup=<domain>`), dan tombol **Tampilkan lebih banyak** (20 baris setiap
+  kali, paling banyak 480). Di dashboard website, admin web hanya melihat perubahan di website itu.
 
 Tindakan untuk setiap user ada di menu titik tiga (⋮) di ujung barisnya.
 
@@ -369,9 +461,10 @@ dan `user::email-pemberitahuan` (masing-masing dengan versi `-teks`), yang bisa 
 
 Setiap perubahan akun dicatat bersama pelaku, user sasaran, lingkup tempat perubahan dilakukan, keterangan
 (misalnya `anggota → admin_web`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
-diubah, akun diaktifkan atau dinonaktifkan, serta email ditambah, dihapus, dijadikan utama, atau dipilih untuk
-website. Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server yang
-menjalankannya (misalnya `terminal (ade)`, atau `Claudia, lewat sudo dari ade`). Nama itu akun sistem di server,
+diubah, akun diaktifkan atau dinonaktifkan, email ditambah, dihapus, dijadikan utama, atau dipilih untuk
+website, serta foto diganti atau dihapus (`ubah_foto`) dan isian Tentang atau nama di website diubah
+(`ubah_profil`). Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server
+yang menjalankannya (misalnya `terminal (budi)`, atau `www, lewat sudo dari budi`). Nama itu akun sistem di server,
 bukan akun Dapur, jadi tidak bisa membedakan orang yang memakai akun sistem yang sama.
 
 Riwayat akun disimpan selamanya. Lihat dengan `vendor/bin/dapur-user riwayat-akun`, atau di bagian aktivitas
@@ -416,6 +509,8 @@ $pintu = new Pintu('laporan', '/laporan');
 'laporan.lupa_sandi'  => PabrikLayanan::lupaSandi($container, $pintu),
 'laporan.atur_sandi'  => PabrikLayanan::aturSandi($container, $pintu),
 'laporan.verifikasi'  => PabrikLayanan::verifikasiEmail($container, $pintu),
+'laporan.foto'        => PabrikLayanan::foto($container, $pintu),
+'laporan.lokasi'      => PabrikLayanan::lokasi($container),
 
 // Route:
 $app->route('/laporan/masuk', [MulaiSesiMiddleware::class, 'laporan.masuk'], ['GET', 'POST']);
@@ -423,6 +518,8 @@ $app->post('/laporan/keluar', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk'
 $app->route('/laporan/profil', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.profil'], ['GET', 'POST']);
 $app->route('/laporan/pengaturan', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.pengaturan'], ['GET', 'POST']);
 $app->route('/laporan/user', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.user'], ['GET', 'POST']);
+$app->get('/laporan/foto/{kode:[a-f0-9]{32}}', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.foto']);
+$app->get('/laporan/lokasi', [MulaiSesiMiddleware::class, 'laporan.wajib_masuk', 'laporan.lokasi']);
 // Halaman tautan email, tanpa login:
 $app->route('/laporan/lupa-sandi', [MulaiSesiMiddleware::class, 'laporan.lupa_sandi'], ['GET', 'POST']);
 $app->route('/laporan/atur-sandi', [MulaiSesiMiddleware::class, 'laporan.atur_sandi'], ['GET', 'POST']);
