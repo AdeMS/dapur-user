@@ -7,12 +7,17 @@ namespace AdeMS\Dapur\User\Handler;
 use AdeMS\Dapur\Email\GagalKirim;
 use AdeMS\Dapur\User\AturanKataSandi;
 use AdeMS\Dapur\User\BatasanDomain;
+use AdeMS\Dapur\User\DaftarLokasi;
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\FotoUser;
+use AdeMS\Dapur\User\Identitas;
+use AdeMS\Dapur\User\Konteks;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PembatasPercobaan;
 use AdeMS\Dapur\User\PenyajiHalaman;
 use AdeMS\Dapur\User\Perangkat;
 use AdeMS\Dapur\User\Pintu;
+use AdeMS\Dapur\User\ProfilUser;
 use AdeMS\Dapur\User\RiwayatAkun;
 use AdeMS\Dapur\User\RiwayatMasuk;
 use AdeMS\Dapur\User\Sesi;
@@ -25,13 +30,16 @@ use DateTimeZone;
 use Laminas\Diactoros\Response\RedirectResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Halaman milik user yang sedang login, dipasang di belakang WajibMasukMiddleware. Satu kelas melayani dua halaman:
- * - Profil (HALAMAN_PROFIL): kartu user (hanya dibaca);
- * - Pengaturan & Privasi (HALAMAN_PENGATURAN): tab Akun Saya (mengubah nama; mengganti email bila email bisa
- *   dikirim dan mengganti kata sandi lewat popup), Aktivitas (perubahan akun), dan Riwayat masuk.
+ * - Profil (HALAMAN_PROFIL): kartu user dan bagian Tentang (hanya dibaca). Dengan ?id=<nomor>, profil rekan yang
+ *   sama-sama punya akses ke lingkup ini;
+ * - Pengaturan & Privasi (HALAMAN_PENGATURAN): tab Akun Saya (foto, nama, Tentang, profil di website ini; mengganti
+ *   email bila email bisa dikirim dan mengganti kata sandi lewat popup), Aktivitas (perubahan akun), dan Riwayat
+ *   masuk.
  *
  * Email baru berlaku setelah tautan verifikasi yang dikirim ke email itu dibuka (VerifikasiEmailHandler); email lama
  * menerima pemberitahuan, agar pemilik akun tahu bila bukan dia yang memintanya.
@@ -65,12 +73,18 @@ final class ProfilHandler implements RequestHandlerInterface
     public const JUMLAH_MAKS    = 480;
 
     /** Tab di halaman Pengaturan & Privasi; bisa dibuka langsung lewat ?tab=... */
-    public const TAB_PENGATURAN = ['akun', 'aktivitas', 'riwayat'];
+    public const TAB_PENGATURAN = ['akun', 'profil', 'aktivitas', 'riwayat'];
+
+    /** Bagian form yang ada di tab Profil (lainnya di tab Akun Saya). */
+    private const BAGIAN_PROFIL = ['foto', 'tentang', 'profil_website'];
 
     /** Aksi form yang diterima tiap halaman. Halaman Profil hanya untuk dibaca. */
     private const AKSI = [
         self::HALAMAN_PROFIL     => [],
-        self::HALAMAN_PENGATURAN => ['nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website'],
+        self::HALAMAN_PENGATURAN => [
+            'nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website',
+            'foto', 'hapus_foto', 'tentang', 'nama_website',
+        ],
     ];
 
     /** Tautan lama ke tab halaman profil (sebelum ada Pengaturan & Privasi) => tab tujuannya. */
@@ -82,6 +96,8 @@ final class ProfilHandler implements RequestHandlerInterface
     ];
 
     private const PANJANG_NAMA_MAKS  = 190;
+    /** Panjang tiap bagian nama (depan, tengah, belakang). */
+    private const PANJANG_BAGIAN_NAMA = 100;
     private const PANJANG_SANDI_MAKS = 1024;
 
     public function __construct(
@@ -98,6 +114,8 @@ final class ProfilHandler implements RequestHandlerInterface
         private readonly string $namaWebsite = 'Dapur AdeMS',
         private readonly string $jenis = self::HALAMAN_PROFIL,
         private readonly BatasanDomain $domain = new BatasanDomain(),
+        private readonly ?FotoUser $foto = null,
+        private readonly ?DaftarLokasi $lokasi = null,
     ) {
         if (! isset(self::AKSI[$jenis])) {
             throw new \InvalidArgumentException("Jenis halaman tidak dikenal: {$jenis}");
@@ -126,6 +144,10 @@ final class ProfilHandler implements RequestHandlerInterface
                 return new RedirectResponse($this->alamatPengaturan(self::TAB_LAMA[$tab]));
             }
 
+            if ($this->jenis === self::HALAMAN_PROFIL) {
+                return $this->halamanProfil($request, $user, is_string($pesan) ? $pesan : null);
+            }
+
             $tab    = in_array($tab, self::TAB_PENGATURAN, true) ? $tab : 'akun';
             $jumlah = self::jumlah($request->getQueryParams()['jumlah'] ?? null);
 
@@ -139,6 +161,11 @@ final class ProfilHandler implements RequestHandlerInterface
         }
 
         $isi = (array) $request->getParsedBody();
+        if ($isi === [] && (int) $request->getHeaderLine('Content-Length') > 0) {
+            // Isi form dibuang PHP karena melewati post_max_size, biasanya foto yang terlalu besar.
+            return $this->galat($request, $user, 'foto', 'Foto terlalu besar; paling besar 2 MB.', 413);
+        }
+
         if (! (new TokenCsrf($sesi))->sah($isi[TokenCsrf::FIELD] ?? null)) {
             return $this->galat($request, $user, null, 'Halaman sudah kedaluwarsa. Silakan coba lagi.', 400);
         }
@@ -156,6 +183,10 @@ final class ProfilHandler implements RequestHandlerInterface
             'utama_email'  => $this->jadikanEmailUtama($request, $user, $sesi, $isi),
             'hapus_email'  => $this->hapusEmail($request, $user, $sesi, $isi),
             'email_website' => $this->pilihEmailWebsite($request, $user, $sesi, $isi),
+            'foto'          => $this->gantiFoto($request, $user, $sesi, $isi),
+            'hapus_foto'    => $this->hapusFoto($request, $user, $sesi, $isi),
+            'tentang'       => $this->simpanTentang($request, $user, $sesi, $isi),
+            'nama_website'  => $this->simpanNamaWebsite($request, $user, $sesi, $isi),
             default => $this->galat($request, $user, null, 'Permintaan tidak dikenal.', 400),
         };
     }
@@ -163,6 +194,10 @@ final class ProfilHandler implements RequestHandlerInterface
     /** @param array<mixed> $isi */
     private function gantiNama(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
     {
+        if (array_key_exists('nama_depan', $isi) && $this->daftar->profil()->tersedia()) {
+            return $this->gantiNamaLengkap($request, $user, $sesi, $isi);
+        }
+
         $nama = is_string($isi['nama'] ?? null) ? trim($isi['nama']) : '';
         if ($nama === '' || mb_strlen($nama, 'UTF-8') > self::PANJANG_NAMA_MAKS
             || preg_match('/[\x00-\x1f\x7f]/u', $nama) !== 0) {
@@ -315,6 +350,321 @@ final class ProfilHandler implements RequestHandlerInterface
     }
 
     /** Jumlah baris dari ?jumlah=..., dibulatkan ke kelipatan JUMLAH_LANGKAH antara JUMLAH_LANGKAH dan JUMLAH_MAKS. */
+    /**
+     * Nama depan, tengah, dan belakang yang diisi sendiri oleh user (2.3). Kolom nama berisi gabungannya.
+     *
+     * @param array<mixed> $isi
+     */
+    private function gantiNamaLengkap(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $bagian = [];
+        foreach (['nama_depan', 'nama_tengah', 'nama_belakang'] as $k) {
+            $bagian[$k] = is_string($isi[$k] ?? null) ? trim($isi[$k]) : '';
+        }
+
+        $form = ['namaDepan' => $bagian['nama_depan'], 'namaTengah' => $bagian['nama_tengah'], 'namaBelakang' => $bagian['nama_belakang']];
+        foreach ($bagian as $k => $nilai) {
+            if (mb_strlen($nilai, 'UTF-8') > self::PANJANG_BAGIAN_NAMA || preg_match('/[\x00-\x1f\x7f]/u', $nilai) !== 0) {
+                return $this->galat($request, $user, 'nama', sprintf('Setiap bagian nama paling panjang %d karakter.', self::PANJANG_BAGIAN_NAMA), 422, $form);
+            }
+        }
+
+        if ($bagian['nama_depan'] === '') {
+            return $this->galat($request, $user, 'nama', 'Nama depan wajib diisi.', 422, $form);
+        }
+
+        if ($this->riwayatAkun !== null && ! $this->riwayatAkun->tersedia()) {
+            return $this->galat($request, $user, 'nama', RiwayatAkun::PESAN_BELUM_DIPASANG, 503, $form);
+        }
+
+        $nama = User::gabungNama($bagian['nama_depan'], $bagian['nama_tengah'], $bagian['nama_belakang']);
+        if ([$user->namaDepan, $user->namaTengah, $user->namaBelakang, $user->nama] !== [...array_values($bagian), $nama]) {
+            $this->daftar->gantiNamaLengkap($user->id, $bagian['nama_depan'], $bagian['nama_tengah'], $bagian['nama_belakang']);
+            if ($nama !== $user->nama) {
+                $this->catatAkun($request, $user, RiwayatAkun::UBAH_NAMA, $user->nama . ' → ' . $nama);
+            }
+        }
+
+        $sesi->simpan(self::SESI_PESAN, 'Nama sudah disimpan.');
+
+        return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /**
+     * Mengganti foto akun (untuk = akun) atau foto khusus website ini (untuk = website).
+     *
+     * @param array<mixed> $isi
+     */
+    private function gantiFoto(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $website = ($isi['untuk'] ?? null) === 'website';
+        $belum   = $this->belumSiapProfil($request, $user, 'foto', $website);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        assert($this->foto !== null);
+        $file = $request->getUploadedFiles()['foto'] ?? null;
+        if (! $file instanceof UploadedFileInterface || $file->getError() === UPLOAD_ERR_NO_FILE) {
+            return $this->galat($request, $user, 'foto', 'Pilih file foto lebih dulu.', 422);
+        }
+
+        if (in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            return $this->galat($request, $user, 'foto', 'Foto terlalu besar; paling besar 2 MB.', 413);
+        }
+
+        $path = $file->getError() === UPLOAD_ERR_OK ? $file->getStream()->getMetadata('uri') : null;
+        if (! is_string($path) || ! is_file($path)) {
+            return $this->galat($request, $user, 'foto', 'Foto gagal diunggah. Coba lagi.', 422);
+        }
+
+        try {
+            $kode = $this->foto->simpan($path);
+        } catch (\RuntimeException $e) {
+            return $this->galat($request, $user, 'foto', $e->getMessage(), 422);
+        }
+
+        $lama = $this->kodeFoto($user, $website);
+        $this->aturKodeFoto($user, $website, $kode);
+        $this->foto->hapus($lama);
+        $this->catatAkun($request, $user, RiwayatAkun::UBAH_FOTO, $website ? 'foto di website ini diganti' : 'foto akun diganti');
+        $sesi->simpan(self::SESI_PESAN, $website ? 'Foto di website ini sudah diganti.' : 'Foto sudah diganti.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /** @param array<mixed> $isi */
+    private function hapusFoto(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $website = ($isi['untuk'] ?? null) === 'website';
+        $belum   = $this->belumSiapProfil($request, $user, 'foto', $website, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        $lama = $this->kodeFoto($user, $website);
+        if ($lama !== '') {
+            $this->aturKodeFoto($user, $website, '');
+            $this->foto?->hapus($lama);
+            $this->catatAkun($request, $user, RiwayatAkun::UBAH_FOTO, $website ? 'foto di website ini dihapus' : 'foto akun dihapus');
+        }
+
+        $sesi->simpan(self::SESI_PESAN, $website ? 'Foto di website ini dihapus; foto akun yang dipakai.' : 'Foto sudah dihapus.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
+     * Bagian Tentang (pendidikan, lokasi, keahlian, biografi), dilihat rekan di website yang sama.
+     *
+     * @param array<mixed> $isi
+     */
+    private function simpanTentang(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $nilai = [];
+        foreach (ProfilUser::TENTANG as $kunci => [$label, $maks]) {
+            $teks = is_string($isi[$kunci] ?? null) ? trim(str_replace("\r\n", "\n", $isi[$kunci])) : '';
+            // Biografi boleh beberapa baris; isian lain satu baris.
+            $kendali = $kunci === 'biografi' ? '/[\x00-\x09\x0b-\x1f\x7f]/u' : '/[\x00-\x1f\x7f]/u';
+            if (mb_strlen($teks, 'UTF-8') > $maks || preg_match($kendali, $teks) !== 0) {
+                return $this->galat($request, $user, 'tentang', sprintf('%s paling panjang %d karakter.', $label, $maks), 422, ['tentang' => $nilai + [$kunci => $teks, ProfilUser::LOKASI_ID => is_string($isi[ProfilUser::LOKASI_ID] ?? null) ? $isi[ProfilUser::LOKASI_ID] : '']]);
+            }
+
+            $nilai[$kunci] = $teks;
+        }
+
+        $belum = $this->belumSiapProfil($request, $user, 'tentang', false, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        $nilai[ProfilUser::LOKASI_ID] = $this->lokasiId($isi, $nilai['lokasi']);
+
+        $berubah = $this->daftar->profil()->simpan($user->id, '', $nilai);
+        // Nomor kota ikut berubah bersama teks Lokasi, jadi cukup dicatat sebagai "lokasi".
+        $berubah = array_values(array_unique(array_map(
+            static fn (string $k): string => $k === ProfilUser::LOKASI_ID ? 'lokasi' : $k,
+            $berubah,
+        )));
+        if ($berubah !== []) {
+            $label = array_map(static fn (string $k): string => strtolower(ProfilUser::TENTANG[$k][0]), $berubah);
+            $this->catatAkun($request, $user, RiwayatAkun::UBAH_PROFIL, 'Tentang: ' . implode(', ', $label));
+        }
+
+        $sesi->simpan(self::SESI_PESAN, 'Tentang Anda sudah disimpan.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
+     * Nomor kota yang dipilih dari saran Lokasi, hanya bila kota itu memang ada dan teks Lokasi masih sama dengan
+     * teks saran (diubah sesudah memilih = Lokasi diketik bebas). Kosong bila tidak ada pilihan yang sah.
+     *
+     * @param array<mixed> $isi
+     */
+    private function lokasiId(array $isi, string $teks): string
+    {
+        $id = $isi[ProfilUser::LOKASI_ID] ?? null;
+        if ($this->lokasi === null || $teks === '' || ! is_string($id) || preg_match('/^[1-9]\d{0,9}$/', $id) !== 1) {
+            return '';
+        }
+
+        try {
+            $kota = $this->lokasi->ambil((int) $id);
+        } catch (\Throwable) {
+            // Tabel kota tidak terjangkau: Lokasi tetap tersimpan sebagai teks bebas.
+            return '';
+        }
+
+        return $kota !== null && $kota['teks'] === $teks ? (string) $kota['id'] : '';
+    }
+
+    /**
+     * Nama tampilan khusus website ini; kosong berarti memakai nama akun.
+     *
+     * @param array<mixed> $isi
+     */
+    private function simpanNamaWebsite(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $nama = is_string($isi['nama_website'] ?? null) ? trim($isi['nama_website']) : '';
+        if (mb_strlen($nama, 'UTF-8') > ProfilUser::PANJANG_NAMA_MAKS || preg_match('/[\x00-\x1f\x7f]/u', $nama) !== 0) {
+            return $this->galat($request, $user, 'profil_website', sprintf('Nama paling panjang %d karakter.', ProfilUser::PANJANG_NAMA_MAKS), 422, ['namaWebsite' => $nama]);
+        }
+
+        $belum = $this->belumSiapProfil($request, $user, 'profil_website', true, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        if ($this->daftar->profil()->simpan($user->id, $this->pintu->lingkup, [ProfilUser::NAMA => $nama]) !== []) {
+            $this->catatAkun($request, $user, RiwayatAkun::UBAH_PROFIL, $nama === '' ? 'nama di website ini dihapus' : 'nama di website ini: ' . $nama);
+        }
+
+        $sesi->simpan(self::SESI_PESAN, $nama === '' ? 'Website ini kembali memakai nama akun Anda.' : 'Nama di website ini sudah disimpan.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
+     * Halaman galat bila profil belum bisa dipakai: tabel belum dibuat, profil website diminta di dashboard utama, atau
+     * (untuk unggah foto) folder foto belum siap.
+     */
+    private function belumSiapProfil(ServerRequestInterface $request, User $user, string $bagian, bool $website, bool $perluFolder = true): ?ResponseInterface
+    {
+        if (! $this->daftar->profil()->tersedia() || ($this->riwayatAkun !== null && ! $this->riwayatAkun->tersedia())) {
+            return $this->galat($request, $user, $bagian, ProfilUser::PESAN_BELUM_DIPASANG, 503);
+        }
+
+        if ($website && $this->pintu->lingkup === Konteks::LINGKUP_UTAMA) {
+            return $this->galat($request, $user, $bagian, 'Profil per website hanya bisa diatur di website itu.', 400);
+        }
+
+        if ($perluFolder && ($this->foto === null || ! FotoUser::didukung() || ! $this->foto->folderSiap())) {
+            return $this->galat($request, $user, $bagian, 'Foto belum bisa diunggah: folder foto belum bisa ditulis oleh web server. Hubungi admin website.', 503);
+        }
+
+        return null;
+    }
+
+    private function kodeFoto(User $user, bool $website): string
+    {
+        return $website
+            ? ($this->daftar->profil()->ambil($user->id, $this->pintu->lingkup)[ProfilUser::FOTO] ?? '')
+            : $user->foto;
+    }
+
+    private function aturKodeFoto(User $user, bool $website, string $kode): void
+    {
+        if ($website) {
+            $this->daftar->profil()->simpan($user->id, $this->pintu->lingkup, [ProfilUser::FOTO => $kode]);
+        } else {
+            $this->daftar->aturFoto($user->id, $kode);
+        }
+    }
+
+    /**
+     * Halaman Profil: milik sendiri, atau (dengan ?id=) milik rekan yang punya akses ke lingkup ini.
+     */
+    private function halamanProfil(ServerRequestInterface $request, User $user, ?string $pesan): ResponseInterface
+    {
+        $id     = $request->getQueryParams()['id'] ?? null;
+        $target = $user;
+        if (is_string($id) && $id !== '' && $id !== (string) $user->id) {
+            $target = ctype_digit($id) ? $this->daftar->cariId((int) $id) : null;
+            if ($target === null || $this->daftar->peran($target->id, $this->pintu->lingkup) === null) {
+                return $this->halaman($request, $user, ['tidakDitemukan' => true, 'profil' => null], 404);
+            }
+        }
+
+        return $this->halaman($request, $user, ['pesan' => $pesan, 'profil' => $this->dataProfil($request, $target, $target->id === $user->id)]);
+    }
+
+    /**
+     * Data kartu profil dan bagian Tentang untuk template.
+     *
+     * @return array<string, mixed>
+     */
+    private function dataProfil(ServerRequestInterface $request, User $target, bool $diri): array
+    {
+        $lingkup   = $this->pintu->lingkup;
+        $identitas = $diri ? $request->getAttribute(WajibMasukMiddleware::ATRIBUT_IDENTITAS) : null;
+        $identitas = $identitas instanceof Identitas ? $identitas : Identitas::untuk($target, $lingkup, $this->daftar, $this->pintu);
+        $peran     = $diri ? $this->peran($request) : $this->daftar->peran($target->id, $lingkup);
+        $peran     = is_string($peran) ? ['nilai' => $peran, 'label' => DaftarUser::label($peran)] : $peran;
+
+        $isi     = $this->daftar->profil()->ambil($target->id);
+        $tentang = [];
+        foreach (ProfilUser::TENTANG as $kunci => [$label]) {
+            if (($isi[$kunci] ?? '') !== '') {
+                $tentang[] = ['kunci' => $kunci, 'label' => $label, 'nilai' => $isi[$kunci]];
+            }
+        }
+
+        return [
+            'id'      => $target->id,
+            'nama'    => $identitas->nama,
+            'email'   => $identitas->email,
+            'foto'    => $identitas->foto,
+            'inisial' => $identitas->inisial,
+            'peran'   => $peran,
+            'aktif'   => $target->aktif,
+            'tentang' => $tentang,
+            'diri'    => $diri,
+        ];
+    }
+
+    /**
+     * Data bagian foto, nama, Tentang, dan profil di website ini pada tab Akun Saya.
+     *
+     * @return array<string, mixed>
+     */
+    private function dataAkun(User $user): array
+    {
+        $profil   = $this->daftar->profil();
+        $tersedia = $profil->tersedia();
+        $lingkup  = $this->pintu->lingkup;
+        $website  = $tersedia && $lingkup !== Konteks::LINGKUP_UTAMA ? $profil->ambil($user->id, $lingkup) : null;
+
+        return [
+            'profilTersedia' => $tersedia,
+            'fotoSiap'       => $tersedia && $this->foto !== null && FotoUser::didukung() && $this->foto->folderSiap(),
+            'fotoAkun'       => $user->foto === '' ? null : $this->pintu->alamatFoto($user->foto),
+            'inisialAkun'    => $user->inisial(),
+            'namaDepan'      => $user->namaDepan,
+            'namaTengah'     => $user->namaTengah,
+            'namaBelakang'   => $user->namaBelakang,
+            'tentang'        => $tersedia ? $profil->ambil($user->id) : [],
+            'alamatLokasi'   => $tersedia && $this->lokasi !== null ? $this->pintu->alamatLokasi() : null,
+            'isianTentang'   => array_map(static fn (array $d): array => ['label' => $d[0], 'maks' => $d[1]], ProfilUser::TENTANG),
+            'profilWebsite'  => $website === null ? null : [
+                'nama' => $website[ProfilUser::NAMA] ?? '',
+                'foto' => ($website[ProfilUser::FOTO] ?? '') === '' ? null : $this->pintu->alamatFoto($website[ProfilUser::FOTO]),
+            ],
+            'namaWebsite'    => $website[ProfilUser::NAMA] ?? '',
+            'lingkup'        => $lingkup,
+        ];
+    }
+
     private static function jumlah(mixed $nilai): int
     {
         $jumlah = is_string($nilai) && ctype_digit($nilai) ? (int) $nilai : self::JUMLAH_LANGKAH;
@@ -433,7 +783,9 @@ final class ProfilHandler implements RequestHandlerInterface
     ): ResponseInterface {
         // Semua form ada di tab Akun Saya; form sandi dan email ada di popup, yang langsung terbuka lagi bersama
         // pesannya (lihat template).
-        return $this->halaman($request, $user, $data + ['galat' => $pesan, 'galatBagian' => $bagian, 'tab' => 'akun'], $status);
+        $tab = in_array($bagian, self::BAGIAN_PROFIL, true) ? 'profil' : 'akun';
+
+        return $this->halaman($request, $user, $data + ['galat' => $pesan, 'galatBagian' => $bagian, 'tab' => $tab], $status);
     }
 
     /**
@@ -476,7 +828,7 @@ final class ProfilHandler implements RequestHandlerInterface
             'aktivitas'    => $aktivitas,
             'aktivitasLagi' => $aktivitasLagi,
             'alamatBeranda' => $this->pintu->alamatDasar === '' ? '/' : $this->pintu->alamatDasar,
-        ] + ($profil ? [] : $this->dataEmail($user)), $status);
+        ] + ($profil ? [] : $this->dataEmail($user) + $this->dataAkun($user)), $status);
     }
 
     /**
