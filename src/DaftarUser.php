@@ -49,6 +49,9 @@ final class DaftarUser
     /** Email tambahan (2.2) tersedia sesudah perintah pasang; sebelum itu hanya email utama yang dikenal. */
     private readonly EmailUser $email;
 
+    /** Profil (2.3): Tentang, nama depan/tengah/belakang, foto, dan profil per website; tersedia sesudah pasang. */
+    private readonly ProfilUser $profil;
+
     public function __construct(
         private readonly Adapter $db,
         NamaTabel $tabel = new NamaTabel(),
@@ -58,6 +61,7 @@ final class DaftarUser
         $this->tAkses = $platform->quoteIdentifier($tabel->akses());
         $this->tEmail = $platform->quoteIdentifier($tabel->email());
         $this->email  = new EmailUser($db, $tabel);
+        $this->profil = new ProfilUser($db, $tabel);
     }
 
     /** Mencari akun lewat email utama atau email tambahannya. */
@@ -126,6 +130,29 @@ final class DaftarUser
     public function email(): EmailUser
     {
         return $this->email;
+    }
+
+    public function profil(): ProfilUser
+    {
+        return $this->profil;
+    }
+
+    /**
+     * Menyimpan nama yang diisi sendiri oleh user; kolom nama berisi gabungannya (nama lengkap yang dipakai di
+     * mana-mana). Hanya setelah pasang 2.3 (lihat ProfilUser::tersedia()).
+     */
+    public function gantiNamaLengkap(int $id, string $depan, string $tengah, string $belakang): void
+    {
+        $this->jalankan(
+            "UPDATE {$this->tUser} SET nama = ?, nama_depan = ?, nama_tengah = ?, nama_belakang = ? WHERE id = ?",
+            [User::gabungNama($depan, $tengah, $belakang), trim($depan), trim($tengah), trim($belakang), $id],
+        );
+    }
+
+    /** Kode foto akun (FotoUser), kosong berarti tanpa foto. */
+    public function aturFoto(int $id, string $kode): void
+    {
+        $this->jalankan("UPDATE {$this->tUser} SET foto = ? WHERE id = ?", [$kode, $id]);
     }
 
     public function gantiNama(int $id, string $nama): void
@@ -435,6 +462,11 @@ final class DaftarUser
             (string) $baris[0]['nama'],
             (string) $baris[0]['kata_sandi'],
             (int) $baris[0]['aktif'] === 1,
+            // Kolom 2.3; sebelum pasang belum ada.
+            (string) ($baris[0]['nama_depan'] ?? ''),
+            (string) ($baris[0]['nama_tengah'] ?? ''),
+            (string) ($baris[0]['nama_belakang'] ?? ''),
+            (string) ($baris[0]['foto'] ?? ''),
         );
     }
 
