@@ -63,8 +63,8 @@ final class PerangkatTest extends TestCase
         self::assertMatchesRegularExpression('/^dapur-user \(terminal(: .+)?\)$/', $perangkat);
         self::assertTrue(Perangkat::dariTerminal($perangkat));
 
-        self::assertSame('ade', Perangkat::akunTerminal('dapur-user (terminal: ade)'));
-        self::assertSame('Terminal (Claudia, lewat sudo dari ade)', Perangkat::ringkas('dapur-user (terminal: Claudia, lewat sudo dari ade)'));
+        self::assertSame('budi', Perangkat::akunTerminal('dapur-user (terminal: budi)'));
+        self::assertSame('Terminal (www, lewat sudo dari budi)', Perangkat::ringkas('dapur-user (terminal: www, lewat sudo dari budi)'));
         self::assertSame('Terminal', Perangkat::ringkas(Perangkat::TERMINAL), 'Catatan sebelum 2.2.');
         self::assertNull(Perangkat::akunTerminal(Perangkat::TERMINAL));
         self::assertFalse(Perangkat::dariTerminal('Mozilla/5.0'));
