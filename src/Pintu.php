@@ -70,6 +70,18 @@ final class Pintu
         return $this->rute('/user');
     }
 
+    /** Alamat foto profil (lihat FotoHandler). */
+    public function alamatFoto(string $kode): string
+    {
+        return $this->rute('/foto/' . $kode);
+    }
+
+    /** Saran kota untuk isian Lokasi (LokasiHandler). */
+    public function alamatLokasi(): string
+    {
+        return $this->rute('/lokasi');
+    }
+
     public function alamatLupaSandi(): string
     {
         return $this->rute('/lupa-sandi');
