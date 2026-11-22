@@ -34,6 +34,7 @@ final class PenyajiDasar implements PenyajiHalaman
             'layout'       => $this->pintu->layout,
             'user'         => $request->getAttribute(User::class),
             'emailTampil'  => $request->getAttribute(Middleware\WajibMasukMiddleware::ATRIBUT_EMAIL),
+            'identitas'    => $request->getAttribute(Middleware\WajibMasukMiddleware::ATRIBUT_IDENTITAS),
             'alamatKeluar' => $this->pintu->alamatKeluar(),
             'alamatProfil' => $this->pintu->alamatProfil(),
             'alamatPengaturan' => $this->pintu->alamatPengaturan(),
