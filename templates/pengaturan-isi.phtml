@@ -1,12 +1,13 @@
 <?php
 /**
  * Isi halaman Pengaturan & Privasi, dengan tiga tab:
- * - Akun Saya: avatar, mengubah nama, serta tombol yang membuka popup Ubah email (bila email bisa dikirim) dan
- *   Atur kata sandi baru;
+ * - Akun Saya: nama depan/tengah/belakang, email, serta tombol yang membuka popup Ubah email (bila email bisa
+ *   dikirim) dan Atur kata sandi baru;
+ * - Profil (sesudah pasang 2.3): foto, Tentang saya, dan (di website) Profil di website ini;
  * - Aktivitas: perubahan pada akun user dan perubahan yang ia lakukan pada akun lain;
  * - Riwayat masuk.
  *
- * Tab bisa dibuka langsung lewat ?tab=akun|aktivitas|riwayat. Bila form di popup gagal dikirim, popup itu langsung
+ * Tab bisa dibuka langsung lewat ?tab=akun|profil|aktivitas|riwayat. Bila form di popup gagal dikirim, popup itu langsung
  * terbuka lagi bersama pesannya.
  *
  * @var AdeMS\Dapur\User\User $user
@@ -48,12 +49,53 @@ $warnaAkun = [
     'hapus_email'   => 'secondary',
     'email_utama'   => 'secondary',
     'email_website' => 'secondary',
+    'ubah_foto'     => 'secondary',
+    'ubah_profil'   => 'secondary',
 ];
+$profilSiap   = $this->profilTersedia ?? false;
+$fotoSiap     = $this->fotoSiap ?? false;
+$profilWeb    = $this->profilWebsite ?? null;
+$isianTentang = $this->isianTentang ?? [];
+$tentangIsi   = $this->tentang ?? [];
+$alamatLokasi = $this->alamatLokasi ?? null;
+// Foto yang bisa diklik (seperti foto profil di aplikasi chat): menu Lihat foto, Ambil foto (kamera, hanya bila
+// browser mendukung), Unggah foto, dan Hapus foto. Unggahan dikirim langsung saat file dipilih. $untuk 'akun' atau
+// 'website'; $foto = alamat foto yang sedang tampil (bisa foto akun di bagian website); $adaSendiri = ada foto yang
+// bisa dihapus di bagian ini.
+$pemilihFoto = function (string $untuk, ?string $foto, bool $adaSendiri) use (&$aksi, &$csrf): string {
+    $id     = 'pengaturan-foto-' . $untuk;
+    $avatar = $this->partial('user::avatar', ['foto' => $foto, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']);
+    $h  = '<div class="dropdown user-foto-pemilih">'
+        . '<button type="button" class="user-foto-tombol" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Ubah foto" title="Ubah foto">'
+        . $avatar
+        . '<span class="user-foto-lapis" aria-hidden="true"><i class="bi bi-camera"></i><span>Ubah foto</span></span>'
+        . '<span class="user-foto-lencana" aria-hidden="true"><i class="bi bi-camera-fill"></i></span>'
+        . '</button><ul class="dropdown-menu">';
+    if ($foto !== null) {
+        $h .= '<li><button type="button" class="dropdown-item" data-user-foto-lihat="' . $this->escapeHtmlAttr($foto) . '"><i class="bi bi-eye me-2" aria-hidden="true"></i>Lihat foto</button></li>';
+    }
+    $h .= '<li class="user-foto-kamera d-none"><button type="button" class="dropdown-item" data-user-foto-kamera="' . $id . '"><i class="bi bi-camera me-2" aria-hidden="true"></i>Ambil foto</button></li>'
+        . '<li><label class="dropdown-item" for="' . $id . '" role="button"><i class="bi bi-folder2-open me-2" aria-hidden="true"></i>Unggah foto</label></li>';
+    if ($adaSendiri) {
+        $h .= '<li><hr class="dropdown-divider"></li>'
+            . '<li><button type="submit" class="dropdown-item text-danger" form="' . $id . '-hapus"><i class="bi bi-trash me-2" aria-hidden="true"></i>Hapus foto</button></li>';
+    }
+    $h .= '</ul></div>';
+    $h .= '<form method="post" action="' . $aksi . '" enctype="multipart/form-data" class="d-none">' . $csrf
+        . '<input type="hidden" name="aksi" value="foto"><input type="hidden" name="untuk" value="' . $untuk . '">'
+        . '<input type="file" id="' . $id . '" name="foto" accept="image/jpeg,image/png,image/webp" data-user-foto-unggah></form>';
+    if ($adaSendiri) {
+        $h .= '<form method="post" action="' . $aksi . '" id="' . $id . '-hapus" class="d-none" onsubmit="return confirm(\'Hapus foto ini?\')">' . $csrf
+            . '<input type="hidden" name="aksi" value="hapus_foto"><input type="hidden" name="untuk" value="' . $untuk . '"></form>';
+    }
+
+    return $h;
+};
 $bisaEmail = $this->bisaGantiEmail ?? false;
 $riwayat   = $this->riwayat ?? [];
 $aktivitas = $this->aktivitas ?? [];
 $aksi      = $this->escapeHtmlAttr($this->alamatPengaturan);
-$tabs      = ['akun' => 'Akun Saya', 'aktivitas' => 'Aktivitas', 'riwayat' => 'Riwayat masuk'];
+$tabs      = ['akun' => 'Akun Saya'] + (($this->profilTersedia ?? false) ? ['profil' => 'Profil'] : []) + ['aktivitas' => 'Aktivitas', 'riwayat' => 'Riwayat masuk'];
 $tab       = isset($tabs[$this->tab ?? '']) ? $this->tab : 'akun';
 $galatDi   = fn (string $bagian): bool => $this->galat && $this->galatBagian === $bagian;
 $daftarEmail = $this->daftarEmail ?? [];
@@ -87,6 +129,31 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
     .user-pengaturan .nav-tabs .nav-link { white-space: nowrap; }
     .user-pengaturan-avatar { width: 5rem; height: 5rem; font-size: 1.85rem; }
     .user-pengaturan-label { font-weight: 600; }
+    /* Foto yang bisa diklik: lapisan gelap + ikon kamera saat kursor di atasnya; di layar sentuh (tanpa hover)
+       lencana kamera kecil selalu tampil di pojok kanan bawah. */
+    .user-foto-tombol { position: relative; display: block; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
+    .user-foto-tombol:focus-visible { outline: 0; box-shadow: 0 0 0 .25rem rgba(111, 207, 151, .5); }
+    .user-foto-lapis {
+        position: absolute; inset: 0; border-radius: 50%; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: .1rem; background: rgba(0, 0, 0, .55); color: #fff; font-size: .7rem; line-height: 1.1;
+        opacity: 0; transition: opacity .15s;
+    }
+    .user-foto-lapis .bi { font-size: 1.35rem; }
+    .user-foto-tombol:hover .user-foto-lapis, .user-foto-tombol:focus-visible .user-foto-lapis,
+    .user-foto-tombol[aria-expanded="true"] .user-foto-lapis { opacity: 1; }
+    .user-foto-lencana {
+        position: absolute; right: 0; bottom: 0; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: none;
+        align-items: center; justify-content: center; font-size: .8rem; color: #fff; background: var(--bs-success);
+        border: 2px solid var(--bs-body-bg);
+    }
+    @media (hover: none) { .user-foto-lencana { display: flex; } }
+    .user-foto-pemilih .dropdown-menu label { cursor: pointer; }
+    .user-lokasi { position: relative; }
+    .user-lokasi-saran { top: 100%; left: 0; margin-top: .125rem; width: 100%; max-height: 18rem; overflow-y: auto; }
+    .user-lokasi-saran .dropdown-item { white-space: normal; }
+    .user-foto-besar { width: min(20rem, 80vw); height: auto; aspect-ratio: 1; border-radius: 50%; object-fit: cover; }
+    .user-foto-kamera-video { width: min(20rem, 80vw); aspect-ratio: 1; object-fit: cover; border-radius: 50%; background: #000; }
+    .user-foto-kamera-video.user-foto-cermin { transform: scaleX(-1); }
     /* Baris tujuan tombol "Tampilkan lebih banyak" tidak tertutup navbar */
     .user-pengaturan tbody tr { scroll-margin-top: 6rem; }
 </style>
@@ -127,8 +194,8 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
         <div class="card-body tab-content">
             <div class="tab-pane fade<?= $tab === 'akun' ? ' show active' : '' ?>" id="pengaturan-akun" role="tabpanel" aria-labelledby="pengaturan-tab-akun" tabindex="0">
                 <h2 class="h5 mb-4">Akun Saya</h2>
-                <div class="d-flex align-items-center gap-3 mb-4">
-                    <span class="user-avatar user-pengaturan-avatar" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+                <div class="mb-4">
+                    <?= $this->partial('user::avatar', ['foto' => $this->fotoAkun ?? null, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']) ?>
                 </div>
 <?php if ($galatDi('nama')) : ?>
                 <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
@@ -136,10 +203,28 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                 <form method="post" action="<?= $aksi ?>" id="pengaturan-form-nama">
                     <?= $csrf ?>
                     <input type="hidden" name="aksi" value="nama">
+<?php if ($profilSiap) : ?>
+                    <div class="row g-2 mb-4 col-lg-10 col-xl-8">
+                        <div class="col-md-4">
+                            <label class="form-label user-pengaturan-label" for="pengaturan-nama-depan">Nama depan</label>
+                            <input class="form-control" id="pengaturan-nama-depan" name="nama_depan" type="text" maxlength="100" autocomplete="given-name" required value="<?= $this->escapeHtmlAttr($this->namaDepan ?? '') ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label user-pengaturan-label" for="pengaturan-nama-tengah">Nama tengah</label>
+                            <input class="form-control" id="pengaturan-nama-tengah" name="nama_tengah" type="text" maxlength="100" autocomplete="additional-name" value="<?= $this->escapeHtmlAttr($this->namaTengah ?? '') ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label user-pengaturan-label" for="pengaturan-nama-belakang">Nama belakang</label>
+                            <input class="form-control" id="pengaturan-nama-belakang" name="nama_belakang" type="text" maxlength="100" autocomplete="family-name" value="<?= $this->escapeHtmlAttr($this->namaBelakang ?? '') ?>">
+                        </div>
+                        <div class="col-12 form-text mt-1">Nama lengkap sekarang: <strong><?= $this->escapeHtml($this->user->nama) ?></strong>.<?php if (($this->namaDepan ?? '') === '') : ?> Isi nama depan (wajib), tengah, dan belakang; nama lengkap akan disusun dari ketiganya.<?php endif ?></div>
+                    </div>
+<?php else : ?>
                     <div class="mb-4 col-md-8 col-xl-6">
                         <label class="form-label user-pengaturan-label" for="pengaturan-nama">Nama</label>
                         <input class="form-control" id="pengaturan-nama" name="nama" type="text" maxlength="190" autocomplete="name" required value="<?= $this->escapeHtmlAttr($this->nama ?? $this->user->nama) ?>">
                     </div>
+<?php endif ?>
                 </form>
 <?php if ($daftarEmail === []) : ?>
                 <div class="mb-4 col-md-8 col-xl-6">
@@ -221,6 +306,90 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                     <button type="submit" form="pengaturan-form-nama" class="btn btn-success">Simpan</button>
                 </div>
             </div>
+<?php if ($profilSiap) : ?>
+            <div class="tab-pane fade<?= $tab === 'profil' ? ' show active' : '' ?>" id="pengaturan-profil" role="tabpanel" aria-labelledby="pengaturan-tab-profil" tabindex="0">
+                <h2 class="h5">Profil</h2>
+                <p class="small text-body-secondary mb-4">Foto dan isian ini tampil di halaman Profil Anda dan bisa dilihat rekan di website yang sama dengan Anda.</p>
+                <section aria-labelledby="pengaturan-judul-foto">
+                    <h3 class="h6" id="pengaturan-judul-foto">Foto</h3>
+<?php if ($galatDi('foto')) : ?>
+                <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                <div class="d-flex flex-wrap align-items-center gap-3">
+<?php if ($fotoSiap) : ?>
+                    <?= $pemilihFoto('akun', $this->fotoAkun ?? null, ($this->fotoAkun ?? null) !== null) ?>
+                    <div class="form-text mb-0">Klik foto untuk melihat, mengambil dari kamera, mengunggah, atau menghapusnya.<br>
+                        JPG, PNG, atau WebP, paling besar 2 MB. Foto dipotong persegi.
+                        <span class="d-block text-danger user-foto-galat" data-untuk="pengaturan-foto-akun" role="alert"></span></div>
+<?php else : ?>
+                    <?= $this->partial('user::avatar', ['foto' => $this->fotoAkun ?? null, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']) ?>
+                    <div class="form-text mb-0">Foto belum bisa diunggah: folder foto belum bisa ditulis oleh web server.</div>
+<?php endif ?>
+                </div>
+                </section>
+                <hr class="my-4">
+                <section aria-labelledby="pengaturan-judul-tentang">
+                    <h3 class="h6" id="pengaturan-judul-tentang">Tentang saya</h3>
+                    <p class="small text-body-secondary">Semua isian boleh dikosongkan.</p>
+<?php if ($galatDi('tentang')) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <form method="post" action="<?= $aksi ?>" class="col-lg-10 col-xl-8">
+                        <?= $csrf ?>
+                        <input type="hidden" name="aksi" value="tentang">
+<?php foreach ($isianTentang as $kunci => $isian) : ?>
+                        <div class="mb-3">
+                            <label class="form-label user-pengaturan-label" for="pengaturan-tentang-<?= $this->escapeHtmlAttr($kunci) ?>"><?= $this->escapeHtml($isian['label']) ?></label>
+<?php if ($kunci === 'biografi') : ?>
+                            <textarea class="form-control" id="pengaturan-tentang-<?= $this->escapeHtmlAttr($kunci) ?>" name="<?= $this->escapeHtmlAttr($kunci) ?>" rows="4" maxlength="<?= (int) $isian['maks'] ?>"><?= $this->escapeHtml($tentangIsi[$kunci] ?? '') ?></textarea>
+<?php elseif ($kunci === 'lokasi' && $alamatLokasi !== null) : ?>
+                            <div class="user-lokasi" data-user-lokasi="<?= $this->escapeHtmlAttr($alamatLokasi) ?>">
+                                <input class="form-control" id="pengaturan-tentang-lokasi" name="lokasi" type="text" maxlength="<?= (int) $isian['maks'] ?>" value="<?= $this->escapeHtmlAttr($tentangIsi['lokasi'] ?? '') ?>"
+                                       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pengaturan-lokasi-saran" aria-describedby="pengaturan-lokasi-ket" autocomplete="off">
+                                <input type="hidden" name="lokasi_id" value="<?= $this->escapeHtmlAttr($tentangIsi['lokasi_id'] ?? '') ?>">
+                                <ul class="dropdown-menu user-lokasi-saran" id="pengaturan-lokasi-saran" role="listbox" aria-label="Saran kota"></ul>
+                            </div>
+                            <div class="form-text" id="pengaturan-lokasi-ket">Ketik minimal 2 huruf nama kota lalu pilih dari saran, atau tulis sendiri.</div>
+<?php else : ?>
+                            <input class="form-control" id="pengaturan-tentang-<?= $this->escapeHtmlAttr($kunci) ?>" name="<?= $this->escapeHtmlAttr($kunci) ?>" type="text" maxlength="<?= (int) $isian['maks'] ?>" value="<?= $this->escapeHtmlAttr($tentangIsi[$kunci] ?? '') ?>">
+<?php endif ?>
+                        </div>
+<?php endforeach ?>
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-success">Simpan Tentang</button>
+                        </div>
+                    </form>
+                </section>
+<?php if ($profilWeb !== null) : ?>
+                <hr class="my-4">
+                <section aria-labelledby="pengaturan-judul-profil-website">
+                    <h3 class="h6" id="pengaturan-judul-profil-website">Profil di website ini</h3>
+                    <p class="small text-body-secondary">Nama dan foto khusus untuk <code><?= $this->escapeHtml($this->lingkup ?? '') ?></code>, hanya terlihat di website ini. Kosongkan untuk memakai nama dan foto akun Anda.</p>
+<?php if ($galatDi('profil_website')) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+<?php if ($fotoSiap) : ?>
+                        <?= $pemilihFoto('website', $profilWeb['foto'] ?? ($this->fotoAkun ?? null), $profilWeb['foto'] !== null) ?>
+                        <div class="form-text mb-0"><?= $profilWeb['foto'] === null ? 'Saat ini memakai foto akun. Klik foto untuk memasang foto khusus website ini.' : 'Foto khusus website ini. Klik foto untuk menggantinya.' ?>
+                            <span class="d-block text-danger user-foto-galat" data-untuk="pengaturan-foto-website" role="alert"></span></div>
+<?php else : ?>
+                        <?= $this->partial('user::avatar', ['foto' => $profilWeb['foto'] ?? ($this->fotoAkun ?? null), 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']) ?>
+<?php endif ?>
+                    </div>
+                    <form method="post" action="<?= $aksi ?>" class="col-md-8 col-xl-6">
+                        <?= $csrf ?>
+                        <input type="hidden" name="aksi" value="nama_website">
+                        <label class="form-label user-pengaturan-label" for="pengaturan-nama-website">Nama di website ini</label>
+                        <div class="d-flex gap-2">
+                            <input class="form-control" id="pengaturan-nama-website" name="nama_website" type="text" maxlength="190" placeholder="<?= $this->escapeHtmlAttr($this->user->nama) ?>" value="<?= $this->escapeHtmlAttr($this->namaWebsite ?? '') ?>">
+                            <button type="submit" class="btn btn-outline-success">Simpan</button>
+                        </div>
+                    </form>
+                </section>
+<?php endif ?>
+            </div>
+<?php endif ?>
             <div class="tab-pane fade<?= $tab === 'aktivitas' ? ' show active' : '' ?>" id="pengaturan-aktivitas" role="tabpanel" aria-labelledby="pengaturan-tab-aktivitas" tabindex="0">
                 <h2 class="h5">Aktivitas</h2>
                 <p class="small text-body-secondary mb-3">Perubahan pada akun Anda dan perubahan yang Anda lakukan pada akun lain, waktu <?= $this->escapeHtml($this->zonaWaktu) ?>.</p>
@@ -396,6 +565,40 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
         </div>
     </div>
 <?php endif ?>
+<?php if ($profilSiap && $fotoSiap) : ?>
+    <div class="modal fade" id="user-foto-popup-lihat" tabindex="-1" aria-labelledby="user-foto-judul-lihat" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="user-foto-judul-lihat">Foto</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body text-center"><img class="user-foto-besar" src="" alt="Foto profil"></div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="user-foto-popup-kamera" tabindex="-1" aria-labelledby="user-foto-judul-kamera" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="user-foto-judul-kamera">Ambil Foto</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <video class="user-foto-kamera-video user-foto-cermin" autoplay playsinline muted></video>
+                    <canvas class="user-foto-kamera-video d-none"></canvas>
+                    <p class="small text-body-secondary mt-2 mb-0 user-foto-kamera-pesan">Izinkan browser memakai kamera.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="button" class="btn btn-outline-secondary d-none" data-user-kamera="ulang"><i class="bi bi-arrow-counterclockwise me-1"></i>Ulangi</button>
+                    <button type="button" class="btn btn-success" data-user-kamera="jepret" disabled><i class="bi bi-camera me-1"></i>Ambil</button>
+                    <button type="button" class="btn btn-success d-none" data-user-kamera="pakai"><i class="bi bi-check-lg me-1"></i>Pakai foto ini</button>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endif ?>
 </div>
 <script>
     // Tab yang dibuka ikut tercatat di alamat (?tab=...), agar tetap terbuka saat halaman dimuat ulang.
@@ -406,11 +609,228 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
             history.replaceState(null, '', alamat);
         });
     });
+<?php if ($alamatLokasi !== null && $profilSiap) : ?>
+    // Saran kota untuk Lokasi: ketik minimal 2 huruf, pilih dengan klik atau panah + Enter. Memilih saran mengisi
+    // nomor kota (lokasi_id); mengubah teks sesudahnya menjadikan Lokasi teks bebas lagi.
+    document.querySelectorAll('[data-user-lokasi]').forEach((wadah) => {
+        const masukan = wadah.querySelector('input[name=lokasi]');
+        const nomor   = wadah.querySelector('input[name=lokasi_id]');
+        const daftar  = wadah.querySelector('ul');
+        let pilihan = [];
+        let aktif   = -1;
+        let jeda    = null;
+        let urutan  = 0;
+
+        const tutup = () => {
+            daftar.classList.remove('show');
+            daftar.replaceChildren();
+            masukan.setAttribute('aria-expanded', 'false');
+            masukan.removeAttribute('aria-activedescendant');
+            pilihan = [];
+            aktif = -1;
+        };
+        const tandai = (i) => {
+            aktif = i;
+            daftar.querySelectorAll('.dropdown-item').forEach((el, j) => {
+                el.classList.toggle('active', j === i);
+                el.setAttribute('aria-selected', j === i ? 'true' : 'false');
+            });
+            if (i >= 0) {
+                masukan.setAttribute('aria-activedescendant', 'pengaturan-lokasi-' + i);
+                daftar.children[i].scrollIntoView({ block: 'nearest' });
+            }
+        };
+        const pilih = (i) => {
+            masukan.value = pilihan[i].teks;
+            nomor.value   = String(pilihan[i].id);
+            tutup();
+        };
+        const tampilkan = (hasil) => {
+            daftar.replaceChildren();
+            pilihan = hasil;
+            aktif = -1;
+            if (hasil.length === 0) {
+                tutup();
+                return;
+            }
+            hasil.forEach((h, i) => {
+                const li = document.createElement('li');
+                const tombol = document.createElement('button');
+                tombol.type = 'button';
+                tombol.className = 'dropdown-item';
+                tombol.id = 'pengaturan-lokasi-' + i;
+                tombol.setAttribute('role', 'option');
+                tombol.setAttribute('aria-selected', 'false');
+                tombol.tabIndex = -1;
+                tombol.textContent = h.teks;
+                // mousedown agar terpilih sebelum isian kehilangan fokus
+                tombol.addEventListener('mousedown', (e) => { e.preventDefault(); pilih(i); });
+                li.appendChild(tombol);
+                daftar.appendChild(li);
+            });
+            daftar.classList.add('show');
+            masukan.setAttribute('aria-expanded', 'true');
+        };
+        const cari = async () => {
+            const teks = masukan.value.trim();
+            const ke = ++urutan;
+            if (teks.length < 2) {
+                tutup();
+                return;
+            }
+            try {
+                const jawab = await fetch(wadah.dataset.userLokasi + '?cari=' + encodeURIComponent(teks), {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                });
+                if (! jawab.ok) {
+                    tutup();
+                    return;
+                }
+                const data = await jawab.json();
+                if (ke === urutan && document.activeElement === masukan) {
+                    tampilkan(Array.isArray(data.hasil) ? data.hasil : []);
+                }
+            } catch (e) {
+                tutup();
+            }
+        };
+
+        masukan.addEventListener('input', () => {
+            nomor.value = '';
+            clearTimeout(jeda);
+            jeda = setTimeout(cari, 300);
+        });
+        masukan.addEventListener('keydown', (e) => {
+            if (pilihan.length === 0) {
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                tandai((aktif + 1) % pilihan.length);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                tandai(aktif <= 0 ? pilihan.length - 1 : aktif - 1);
+            } else if (e.key === 'Enter' && aktif >= 0) {
+                e.preventDefault();
+                pilih(aktif);
+            } else if (e.key === 'Escape') {
+                tutup();
+            }
+        });
+        masukan.addEventListener('blur', () => setTimeout(tutup, 150));
+    });
+<?php endif ?>
 <?php if ($popupBuka !== null) : ?>
     // Form di popup gagal dikirim: buka lagi popup itu bersama pesannya. Bootstrap dimuat di akhir halaman, jadi
     // tunggu sampai halaman selesai dimuat.
     document.addEventListener('DOMContentLoaded', () => {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('pengaturan-popup-<?= $popupBuka ?>')).show();
     });
+<?php endif ?>
+<?php if ($profilSiap && $fotoSiap) : ?>
+    (() => {
+        const UKURAN_MAKS = <?= \AdeMS\Dapur\User\FotoUser::UKURAN_MAKS ?>;
+        const galat = (id, teks) => {
+            document.querySelectorAll('.user-foto-galat[data-untuk="' + id + '"]').forEach((el) => { el.textContent = teks; });
+        };
+        // Unggah langsung saat file dipilih; file di atas 2 MB ditolak di browser agar tidak perlu dikirim dulu.
+        document.querySelectorAll('[data-user-foto-unggah]').forEach((masukan) => {
+            masukan.addEventListener('change', () => {
+                const file = masukan.files[0];
+                if (! file) {
+                    return;
+                }
+                if (file.size > UKURAN_MAKS) {
+                    galat(masukan.id, 'Foto terlalu besar (' + (file.size / 1048576).toFixed(1) + ' MB); paling besar 2 MB.');
+                    masukan.value = '';
+                    return;
+                }
+                galat(masukan.id, '');
+                masukan.form.submit();
+            });
+        });
+
+        // Lihat foto
+        const popupLihat = document.getElementById('user-foto-popup-lihat');
+        document.querySelectorAll('[data-user-foto-lihat]').forEach((tombol) => {
+            tombol.addEventListener('click', () => {
+                popupLihat.querySelector('img').src = tombol.dataset.userFotoLihat;
+                bootstrap.Modal.getOrCreateInstance(popupLihat).show();
+            });
+        });
+
+        // Ambil foto dari kamera (butuh HTTPS dan izin kamera). Hasilnya dipotong persegi di tengah lalu dikirim
+        // seperti file unggahan biasa, jadi server tetap memeriksa dan membuat ulang gambarnya.
+        const popupKamera = document.getElementById('user-foto-popup-kamera');
+        if (! navigator.mediaDevices || ! navigator.mediaDevices.getUserMedia || typeof DataTransfer === 'undefined') {
+            return;
+        }
+        document.querySelectorAll('.user-foto-kamera').forEach((li) => li.classList.remove('d-none'));
+        const video  = popupKamera.querySelector('video');
+        const kanvas = popupKamera.querySelector('canvas');
+        const pesan  = popupKamera.querySelector('.user-foto-kamera-pesan');
+        const tombol = (nama) => popupKamera.querySelector('[data-user-kamera="' + nama + '"]');
+        let aliran = null;
+        let tujuan = null;
+        const tampilan = (jepretan) => {
+            video.classList.toggle('d-none', jepretan);
+            kanvas.classList.toggle('d-none', ! jepretan);
+            tombol('jepret').classList.toggle('d-none', jepretan);
+            tombol('ulang').classList.toggle('d-none', ! jepretan);
+            tombol('pakai').classList.toggle('d-none', ! jepretan);
+        };
+        const berhenti = () => {
+            if (aliran) {
+                aliran.getTracks().forEach((t) => t.stop());
+                aliran = null;
+            }
+            video.srcObject = null;
+        };
+        document.querySelectorAll('[data-user-foto-kamera]').forEach((pemicu) => {
+            pemicu.addEventListener('click', () => {
+                tujuan = document.getElementById(pemicu.dataset.userFotoKamera);
+                tampilan(false);
+                tombol('jepret').disabled = true;
+                pesan.textContent = 'Izinkan browser memakai kamera.';
+                bootstrap.Modal.getOrCreateInstance(popupKamera).show();
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false })
+                    .then((a) => {
+                        aliran = a;
+                        video.srcObject = a;
+                        tombol('jepret').disabled = false;
+                        pesan.textContent = 'Posisikan wajah di tengah lingkaran, lalu klik Ambil.';
+                    })
+                    .catch(() => { pesan.textContent = 'Kamera tidak bisa dibuka. Periksa izin kamera di browser, atau pakai Unggah foto.'; });
+            });
+        });
+        tombol('jepret').addEventListener('click', () => {
+            const sisi = Math.min(video.videoWidth, video.videoHeight);
+            if (! sisi) {
+                return;
+            }
+            const hasil = Math.min(sisi, 1024);
+            kanvas.width = kanvas.height = hasil;
+            const k = kanvas.getContext('2d');
+            // Disimpan seperti yang terlihat di layar (dicerminkan), sama seperti swafoto di kamera ponsel.
+            k.translate(hasil, 0);
+            k.scale(-1, 1);
+            k.drawImage(video, (video.videoWidth - sisi) / 2, (video.videoHeight - sisi) / 2, sisi, sisi, 0, 0, hasil, hasil);
+            tampilan(true);
+            pesan.textContent = 'Pakai foto ini?';
+        });
+        tombol('ulang').addEventListener('click', () => { tampilan(false); pesan.textContent = 'Posisikan wajah di tengah lingkaran, lalu klik Ambil.'; });
+        tombol('pakai').addEventListener('click', () => {
+            tombol('pakai').disabled = true;
+            kanvas.toBlob((blob) => {
+                const dt = new DataTransfer();
+                dt.items.add(new File([blob], 'kamera.jpg', { type: 'image/jpeg' }));
+                tujuan.files = dt.files;
+                berhenti();
+                tujuan.form.submit();
+            }, 'image/jpeg', 0.9);
+        });
+        popupKamera.addEventListener('hidden.bs.modal', () => { berhenti(); tombol('pakai').disabled = false; });
+    })();
 <?php endif ?>
 </script>
