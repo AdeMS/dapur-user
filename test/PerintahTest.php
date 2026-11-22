@@ -79,7 +79,7 @@ final class PerintahTest extends TestCase
         self::assertMatchesRegularExpression('/Tabel user_percobaan_masuk\s+dibuat/', $this->keluaran);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertSame(8, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
+        self::assertSame(9, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
         self::assertSame(0, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
     }
 
@@ -93,6 +93,30 @@ final class PerintahTest extends TestCase
         self::assertSame(1, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
         self::assertMatchesRegularExpression('/Tabel user_riwayat_akun\s+dibuat/', $this->keluaran);
         self::assertNotNull($this->daftar->cariId($id), 'Data lama tetap ada.');
+    }
+
+    public function testPasangDariVersiDuaDuaMenambahProfil(): void
+    {
+        $id = $this->daftar->buat('admin@contoh.com', 'Admin Uji', self::SANDI);
+        // Susunan 2.2: tanpa tabel profil dan tanpa kolom nama/foto di tabel user.
+        $this->db->query('DROP TABLE "user_profil"', Adapter::QUERY_MODE_EXECUTE);
+        foreach (['nama_depan', 'nama_tengah', 'nama_belakang', 'foto'] as $kolom) {
+            $this->db->query("ALTER TABLE \"user\" DROP COLUMN \"{$kolom}\"", Adapter::QUERY_MODE_EXECUTE);
+        }
+
+        self::assertFalse($this->daftar->profil()->tersedia());
+        self::assertSame('Admin Uji', $this->daftar->cariId($id)?->nama, 'Akun tetap terbaca sebelum pasang.');
+        self::assertSame('', $this->daftar->cariId($id)?->foto);
+
+        $this->jalankan($this->perintah(), ['pasang']);
+
+        self::assertMatchesRegularExpression('/Tabel user_profil\s+dibuat/', $this->keluaran);
+        foreach (['nama_depan', 'nama_tengah', 'nama_belakang', 'foto'] as $kolom) {
+            self::assertMatchesRegularExpression("/Kolom user\\.{$kolom}\\s+ditambahkan/", $this->keluaran);
+        }
+
+        self::assertTrue($this->daftar->profil()->tersedia());
+        self::assertSame('', $this->daftar->cariId($id)?->namaDepan, 'Nama depan tidak diisi otomatis.');
     }
 
     public function testPasangDariVersiDuaSatuMenambahKolomDanMenyalinEmail(): void
