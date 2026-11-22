@@ -41,6 +41,7 @@ final class ConfigProvider
                     RiwayatAkun::class,
                     PengaturanUser::class,
                     TokenUser::class,
+                    FotoUser::class,
                     SuratUser::class,
                     Autentikasi::class,
                     Middleware\MulaiSesiMiddleware::class,
