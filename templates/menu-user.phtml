@@ -8,15 +8,23 @@
  *
  * @var AdeMS\Dapur\User\User $user
  * @var string|null $emailTampil  email yang ditampilkan (email website ini); bawaan email utama
+ * @var AdeMS\Dapur\User\Identitas|null $identitas  nama, email, dan foto di website ini; bawaan data akun
  * @var string $alamatKeluar
  * @var string|null $alamatProfil  tautan Profil di submenu; tidak ditampilkan bila tidak diberikan
  * @var string|null $alamatPengaturan  tautan Pengaturan & Privasi; tidak ditampilkan bila tidak diberikan
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
+$identitas = $this->identitas ?? null;
+$namaMenu  = $identitas?->nama ?? $this->user->nama;
+$avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
+    'foto'    => $identitas?->foto,
+    'inisial' => $identitas?->inisial ?? $this->user->inisial(),
+    'kelas'   => $kelas,
+]);
 ?>
 <style>
-    /* Avatar inisial user di navbar, berbentuk bola hijau; nanti diganti foto profil bila ada */
+    /* Avatar user: bola hijau berisi inisial, atau foto profil (.user-avatar-foto) */
     .user-avatar {
         display: inline-flex;
         align-items: center;
@@ -34,6 +42,13 @@
         text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
         box-shadow: inset -2px -3px 5px rgba(0, 0, 0, .35), inset 2px 2px 4px rgba(255, 255, 255, .15), 0 2px 4px rgba(0, 0, 0, .4);
     }
+    /* Avatar kecil di daftar user */
+    .user-avatar-daftar { width: 1.75rem; height: 1.75rem; font-size: .7rem; }
+    .user-avatar-foto {
+        object-fit: cover;
+        background: var(--bs-secondary-bg);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, .4);
+    }
     /* Avatar di kiri nama dan email pada submenu */
     .user-avatar-menu { width: 2.75rem; height: 2.75rem; font-size: 1.05rem; }
     /* Avatar sedikit lebih dekat ke tepi kiri; item submenu di bawahnya tetap memakai jarak bawaan */
@@ -41,15 +56,15 @@
 </style>
 <?php $this->placeholder('menu-kanan')->captureStart() ?>
                             <li class="nav-item dropdown">
-                                <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Menu user <?= $this->escapeHtmlAttr($this->user->nama) ?>">
-                                    <span class="user-avatar" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+                                <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Menu user <?= $this->escapeHtmlAttr($namaMenu) ?>">
+                                    <?= $avatar() ?>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li class="dropdown-item-text d-flex align-items-center gap-2 user-menu-kepala">
-                                        <span class="user-avatar user-avatar-menu flex-shrink-0" aria-hidden="true"><?= $this->escapeHtml($this->user->inisial()) ?></span>
+                                        <?= $avatar('user-avatar-menu flex-shrink-0') ?>
                                         <div class="text-nowrap">
-                                            <div class="fw-semibold"><?= $this->escapeHtml($this->user->nama) ?></div>
-                                            <div class="small text-body-secondary"><?= $this->escapeHtml($this->emailTampil ?? $this->user->email) ?></div>
+                                            <div class="fw-semibold"><?= $this->escapeHtml($namaMenu) ?></div>
+                                            <div class="small text-body-secondary"><?= $this->escapeHtml($identitas?->email ?? $this->emailTampil ?? $this->user->email) ?></div>
                                         </div>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
