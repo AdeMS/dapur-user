@@ -1,0 +1,18 @@
+<?php
+/**
+ * Avatar user: foto profil bila ada, selain itu bola hijau berisi inisial. Gaya .user-avatar ada di
+ * user::menu-user (selalu dimuat untuk user yang login).
+ *
+ * Panggil: $this->partial('user::avatar', ['foto' => $alamatAtauNull, 'inisial' => 'AS', 'kelas' => '...']).
+ *
+ * @var string|null $foto     alamat foto (FotoHandler), null untuk avatar inisial
+ * @var string $inisial
+ * @var string $kelas         kelas tambahan, misalnya ukuran
+ */
+$kelas = trim('user-avatar ' . ($this->kelas ?? ''));
+?>
+<?php if (($this->foto ?? null) !== null) : ?>
+<img class="<?= $this->escapeHtmlAttr($kelas) ?> user-avatar-foto" src="<?= $this->escapeHtmlAttr($this->foto) ?>" alt="" loading="lazy">
+<?php else : ?>
+<span class="<?= $this->escapeHtmlAttr($kelas) ?>" aria-hidden="true"><?= $this->escapeHtml($this->inisial ?? '') ?></span>
+<?php endif ?>
