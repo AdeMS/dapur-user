@@ -31,6 +31,12 @@ final class Pengaturan
     /** Domain email yang diwajibkan di website ini (kosong: semua email diterima). */
     public readonly BatasanDomain $domainEmail;
 
+    /**
+     * Folder foto profil (FotoUser), di luar folder public dan harus bisa ditulis web server. Bawaan
+     * data/upload/avatar di folder inti, dipakai bersama semua website karena foto milik akun.
+     */
+    public readonly string $folderFoto;
+
     /** @param array<string, mixed> $config */
     public function __construct(array $config)
     {
@@ -51,6 +57,13 @@ final class Pengaturan
 
         $this->alamatWebsite = $alamat === null ? null : rtrim($alamat, '/');
         $this->domainEmail   = BatasanDomain::dariPengaturan($config['domain_email'] ?? null);
+
+        $folder = $config['folder_foto'] ?? null;
+        if ($folder !== null && (! is_string($folder) || $folder === '')) {
+            throw new RuntimeException("Pengaturan 'folder_foto' user harus berupa path folder.");
+        }
+
+        $this->folderFoto = $folder === null ? Konteks::folderInti() . '/data/upload/avatar' : rtrim($folder, '/');
     }
 
     private static function zona(mixed $nama): DateTimeZone
