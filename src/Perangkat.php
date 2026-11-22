@@ -46,7 +46,7 @@ final class Perangkat
 
     /**
      * Isi kolom perangkat untuk perintah dapur-user di terminal, bersama nama akun sistem yang menjalankannya,
-     * misalnya "dapur-user (terminal: ade)" atau "dapur-user (terminal: Claudia, lewat sudo dari ade)". Yang tercatat
+     * misalnya "dapur-user (terminal: budi)" atau "dapur-user (terminal: www, lewat sudo dari budi)". Yang tercatat
      * adalah akun sistem server, bukan akun Dapur.
      */
     public static function terminal(): string
