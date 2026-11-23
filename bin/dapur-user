@@ -16,6 +16,8 @@
 declare(strict_types=1);
 
 use AdeMS\Dapur\User\DaftarUser;
+use AdeMS\Dapur\User\FotoUser;
+use AdeMS\Dapur\User\GabungAkun;
 use AdeMS\Dapur\User\Konteks;
 use AdeMS\Dapur\User\Pengaturan;
 use AdeMS\Dapur\User\Perintah;
@@ -61,7 +63,7 @@ try {
     $db        = $container->get(Adapter::class);
     $atur      = new Pengaturan($container->get('config')['user'] ?? []);
     $riwayat   = new RiwayatMasuk($db, $atur->tabel, $atur->riwayatHari);
-    $perintah  = new Perintah($db, new DaftarUser($db, $atur->tabel), $bacaSandi(...), Konteks::lingkup(), $tanya, $atur->tabel, $riwayat, $atur->zonaWaktu, new RiwayatAkun($db, $atur->tabel));
+    $perintah  = new Perintah($db, new DaftarUser($db, $atur->tabel), $bacaSandi(...), Konteks::lingkup(), $tanya, $atur->tabel, $riwayat, $atur->zonaWaktu, new RiwayatAkun($db, $atur->tabel), new GabungAkun($db, new DaftarUser($db, $atur->tabel), $atur->tabel, new FotoUser($atur->folderFoto)));
 
     exit($perintah->jalankan($argumen));
 } catch (Throwable $e) {
