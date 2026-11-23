@@ -497,6 +497,26 @@ final class ProfilHandler implements RequestHandlerInterface
     }
 
     /**
+     * Apakah saran kota bisa dipakai: sumbernya diatur dan tabelnya terbaca (misalnya database kota belum dipasang atau
+     * akun database belum diberi hak baca). Bila tidak, isian Lokasi tampil sebagai teks biasa tanpa saran dan tanpa
+     * keterangan saran.
+     */
+    private function lokasiSiap(): bool
+    {
+        if ($this->lokasi === null) {
+            return false;
+        }
+
+        try {
+            $this->lokasi->ambil(0);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Nomor kota yang dipilih dari saran Lokasi, hanya bila kota itu memang ada dan teks Lokasi masih sama dengan
      * teks saran (diubah sesudah memilih = Lokasi diketik bebas). Kosong bila tidak ada pilihan yang sah.
      *
@@ -654,7 +674,7 @@ final class ProfilHandler implements RequestHandlerInterface
             'namaTengah'     => $user->namaTengah,
             'namaBelakang'   => $user->namaBelakang,
             'tentang'        => $tersedia ? $profil->ambil($user->id) : [],
-            'alamatLokasi'   => $tersedia && $this->lokasi !== null ? $this->pintu->alamatLokasi() : null,
+            'alamatLokasi'   => $tersedia && $this->lokasiSiap() ? $this->pintu->alamatLokasi() : null,
             'isianTentang'   => array_map(static fn (array $d): array => ['label' => $d[0], 'maks' => $d[1]], ProfilUser::TENTANG),
             'profilWebsite'  => $website === null ? null : [
                 'nama' => $website[ProfilUser::NAMA] ?? '',
