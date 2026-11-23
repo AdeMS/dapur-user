@@ -10,6 +10,7 @@ use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarLokasi;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\FotoUser;
+use AdeMS\Dapur\User\GabungAkun;
 use AdeMS\Dapur\User\Identitas;
 use AdeMS\Dapur\User\Konteks;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
@@ -83,7 +84,7 @@ final class ProfilHandler implements RequestHandlerInterface
         self::HALAMAN_PROFIL     => [],
         self::HALAMAN_PENGATURAN => [
             'nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website',
-            'foto', 'hapus_foto', 'tentang', 'nama_website',
+            'foto', 'hapus_foto', 'tentang', 'nama_website', 'gabung_akun',
         ],
     ];
 
@@ -116,6 +117,7 @@ final class ProfilHandler implements RequestHandlerInterface
         private readonly BatasanDomain $domain = new BatasanDomain(),
         private readonly ?FotoUser $foto = null,
         private readonly ?DaftarLokasi $lokasi = null,
+        private readonly ?GabungAkun $gabung = null,
     ) {
         if (! isset(self::AKSI[$jenis])) {
             throw new \InvalidArgumentException("Jenis halaman tidak dikenal: {$jenis}");
@@ -187,6 +189,7 @@ final class ProfilHandler implements RequestHandlerInterface
             'hapus_foto'    => $this->hapusFoto($request, $user, $sesi, $isi),
             'tentang'       => $this->simpanTentang($request, $user, $sesi, $isi),
             'nama_website'  => $this->simpanNamaWebsite($request, $user, $sesi, $isi),
+            'gabung_akun'   => $this->gabungAkun($request, $user, $sesi, $isi),
             default => $this->galat($request, $user, null, 'Permintaan tidak dikenal.', 400),
         };
     }
@@ -347,6 +350,157 @@ final class ProfilHandler implements RequestHandlerInterface
         $sesi->simpan(self::SESI_PESAN, "Tautan konfirmasi sudah dikirim ke {$baru}. Email akun berubah setelah tautan itu dibuka.");
 
         return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /**
+     * Menggabungkan akun lain (B) ke akun ini. Pemohon membuktikan memiliki akun B dengan kata sandinya (langsung
+     * digabung) atau lewat tautan konfirmasi yang dikirim ke email B (digabung setelah tautan dibuka dan dikonfirmasi,
+     * lihat VerifikasiEmailHandler). Akun admin super hanya bisa digabung lewat terminal.
+     *
+     * @param array<mixed> $isi
+     */
+    private function gabungAkun(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $ip     = (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
+        $emailB = is_string($isi['email_akun'] ?? null) ? DaftarUser::normalkanEmail($isi['email_akun']) : '';
+        $cara   = ($isi['cara'] ?? null) === 'tautan' ? 'tautan' : 'sandi';
+        $form   = ['gabungForm' => ['email' => $emailB, 'cara' => $cara]];
+
+        if (! $this->bisaGabung($user)) {
+            return $this->galat($request, $user, 'gabung', $this->daftar->adalahAdminSuper($user->id)
+                ? 'Akun admin super hanya bisa digabungkan oleh admin server lewat terminal.'
+                : 'Penggabungan akun belum bisa dipakai di sini.', 403, $form);
+        }
+
+        assert($this->gabung !== null);
+        if (filter_var($emailB, FILTER_VALIDATE_EMAIL) === false || strlen($emailB) > 190) {
+            return $this->galat($request, $user, 'gabung', 'Tulis email akun yang ingin digabungkan.', 422, $form);
+        }
+
+        if (($isi['setuju'] ?? null) !== '1') {
+            return $this->galat($request, $user, 'gabung', 'Centang pernyataan bahwa penggabungan tidak bisa dibatalkan.', 422, $form);
+        }
+
+        $b = $this->daftar->cariEmail($emailB);
+        if ($b !== null && $b->id === $user->id) {
+            return $this->galat($request, $user, 'gabung', 'Email itu sudah milik akun Anda.', 422, $form);
+        }
+
+        if ($cara === 'tautan') {
+            if (! $this->bisaGantiEmail()) {
+                return $this->galat($request, $user, 'gabung', 'Tautan konfirmasi belum bisa dikirim karena pengiriman email belum diaktifkan. Pakai kata sandi akun itu.', 503, $form);
+            }
+
+            assert($this->token !== null && $this->surat !== null);
+            // Jawaban selalu sama, agar halaman ini tidak bisa dipakai menebak email yang terdaftar.
+            if ($b !== null && $this->gabung->alasanDitolak($user, $b, true) === null) {
+                $token = $this->token->buat($user->id, TokenUser::GABUNG_AKUN, $b->id . '|' . $emailB);
+                try {
+                    $this->surat->kirimKonfirmasiGabung(
+                        $user,
+                        $emailB,
+                        $this->surat->alamatLengkap($request, $this->pintu->alamatVerifikasiEmail(), ['token' => $token]),
+                        $this->namaWebsite,
+                    );
+                } catch (GagalKirim $e) {
+                    return $this->galat($request, $user, 'gabung', 'Tautan konfirmasi gagal dikirim: ' . $e->getMessage(), 502, $form);
+                }
+            }
+
+            $sesi->simpan(self::SESI_PESAN, "Bila {$emailB} adalah akun lain di sini, tautan konfirmasi sudah dikirim ke email itu. Akun digabung setelah tautan itu dibuka dan dikonfirmasi.");
+
+            return new RedirectResponse($this->alamatPengaturan('akun'));
+        }
+
+        // Kata sandi akun B yang salah dihitung seperti login gagal ke akun B.
+        if ($this->pembatas->terkunci($emailB, $ip)) {
+            return $this->galat($request, $user, 'gabung', 'Terlalu banyak percobaan. Silakan coba lagi nanti.', 429, $form);
+        }
+
+        $sandi = is_string($isi['sandi_akun'] ?? null) ? $isi['sandi_akun'] : '';
+        if ($b === null || $sandi === '' || strlen($sandi) > self::PANJANG_SANDI_MAKS || ! password_verify($sandi, $b->kataSandi)) {
+            $this->pembatas->catat($emailB, $ip);
+
+            return $this->galat($request, $user, 'gabung', 'Email atau kata sandi akun itu salah.', 422, $form);
+        }
+
+        $this->pembatas->bersihkan($emailB, $ip);
+        $alasan = $this->gabung->alasanDitolak($user, $b, true);
+        if ($alasan !== null) {
+            return $this->galat($request, $user, 'gabung', $alasan, 422, $form);
+        }
+
+        self::jalankanGabung($this->gabung, $user, $b, $user->id, $this->pintu->lingkup, $request, $this->riwayatAkun, $this->surat, $this->namaWebsite);
+        $sesi->simpan(self::SESI_PESAN, "Akun {$b->email} sudah digabungkan ke akun Anda. Email itu kini bisa dipakai untuk masuk dengan kata sandi akun ini.");
+
+        return new RedirectResponse($this->alamatPengaturan('akun'));
+    }
+
+    /**
+     * Menjalankan penggabungan, mencatatnya di riwayat akun, dan memberi tahu kedua email. Dipakai juga oleh
+     * VerifikasiEmailHandler (konfirmasi lewat tautan).
+     */
+    public static function jalankanGabung(
+        GabungAkun $gabung,
+        User $a,
+        User $b,
+        ?int $pelaku,
+        string $lingkup,
+        ServerRequestInterface $request,
+        ?RiwayatAkun $riwayatAkun,
+        ?SuratUser $surat,
+        string $namaWebsite,
+    ): void {
+        $ringkasan = $gabung->gabung($a, $b);
+        $akses     = array_column($ringkasan['akses'], 'lingkup');
+        $riwayatAkun?->catat(
+            RiwayatAkun::GABUNG_AKUN,
+            $pelaku,
+            $a->id,
+            $lingkup,
+            "akun {$b->email} ({$b->nama}) digabungkan" . ($akses === [] ? '' : '; akses: ' . implode(', ', $akses)),
+            (string) ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
+            $request->getHeaderLine('User-Agent'),
+        );
+
+        if ($surat === null || ! $surat->aktif()) {
+            return;
+        }
+
+        foreach (array_unique([$a->email, $b->email]) as $kepada) {
+            try {
+                $surat->kirimGabungSelesai($a, $b->email, $kepada, $namaWebsite);
+            } catch (GagalKirim $e) {
+                error_log('dapur-user: pemberitahuan penggabungan akun gagal dikirim: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /** Apakah akun ini bisa menggabungkan akun lain lewat halaman ini (bukan admin super, tabel sudah dipasang). */
+    private function bisaGabung(User $user): bool
+    {
+        return $this->gabung !== null
+            && $this->daftar->email()->tersedia()
+            && $this->daftar->profil()->tersedia()
+            && $this->riwayatAkun !== null && $this->riwayatAkun->tersedia()
+            && ! $this->daftar->adalahAdminSuper($user->id);
+    }
+
+    /**
+     * Data bagian "Gabungkan akun" di tab Akun Saya.
+     *
+     * @param array<mixed> $form isian terakhir bila form gagal
+     * @return array{tersedia: bool, adminSuper: bool, bisaTautan: bool, email: string, cara: string}
+     */
+    private function dataGabung(User $user, array $form): array
+    {
+        return [
+            'tersedia'   => $this->bisaGabung($user),
+            'adminSuper' => $this->gabung !== null && $this->daftar->adalahAdminSuper($user->id),
+            'bisaTautan' => $this->bisaGantiEmail(),
+            'email'      => is_string($form['email'] ?? null) ? $form['email'] : '',
+            'cara'       => ($form['cara'] ?? null) === 'tautan' ? 'tautan' : 'sandi',
+        ];
     }
 
     /** Jumlah baris dari ?jumlah=..., dibulatkan ke kelipatan JUMLAH_LANGKAH antara JUMLAH_LANGKAH dan JUMLAH_MAKS. */
@@ -848,7 +1002,9 @@ final class ProfilHandler implements RequestHandlerInterface
             'aktivitas'    => $aktivitas,
             'aktivitasLagi' => $aktivitasLagi,
             'alamatBeranda' => $this->pintu->alamatDasar === '' ? '/' : $this->pintu->alamatDasar,
-        ] + ($profil ? [] : $this->dataEmail($user) + $this->dataAkun($user)), $status);
+        ] + ($profil ? [] : $this->dataEmail($user) + $this->dataAkun($user) + [
+            'gabungAkun' => $this->dataGabung($user, is_array($data['gabungForm'] ?? null) ? $data['gabungForm'] : []),
+        ]), $status);
     }
 
     /**
