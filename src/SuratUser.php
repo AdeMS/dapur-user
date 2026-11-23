@@ -10,8 +10,8 @@ use AdeMS\Dapur\Email\SuratTemplat;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Email yang dikirim paket user: undangan, lupa kata sandi, verifikasi email baru, dan pemberitahuan bahwa email
- * akun sudah diganti. Pengiriman memakai adems/dapur-email, jadi caranya (SMTP, file, atau mati) diatur di sana.
+ * Email yang dikirim paket user: undangan, lupa kata sandi, verifikasi email baru, pemberitahuan bahwa email akun
+ * sudah diganti, dan konfirmasi serta pemberitahuan penggabungan akun. Pengiriman memakai adems/dapur-email, jadi caranya (SMTP, file, atau mati) diatur di sana.
  *
  * Tautan di dalam email harus berupa alamat lengkap (dengan https:// dan nama host). Bila 'alamat_website' diatur,
  * alamat itu yang dipakai; bila tidak, alamat diambil dari request yang sedang berjalan.
@@ -101,6 +101,38 @@ final class SuratUser
             'emailBaru'    => $emailBaru,
             'sudahDiganti' => $sudahDiganti,
             'namaWebsite'  => $namaWebsite,
+        ]);
+    }
+
+    /**
+     * Meminta konfirmasi penggabungan akun ke email akun yang akan ditutup.
+     *
+     * @throws GagalKirim
+     */
+    public function kirimKonfirmasiGabung(User $akun, string $emailB, string $tautan, string $namaWebsite): void
+    {
+        $this->kirim('user::email-gabung-konfirmasi', $emailB, '', "Konfirmasi penggabungan akun {$namaWebsite}", [
+            'nama'        => $akun->nama,
+            'emailAkun'   => $akun->email,
+            'emailB'      => $emailB,
+            'tautan'      => $tautan,
+            'namaWebsite' => $namaWebsite,
+            'jam'         => intdiv(TokenUser::MASA_BERLAKU[TokenUser::GABUNG_AKUN], 3600),
+        ]);
+    }
+
+    /**
+     * Memberi tahu satu alamat bahwa akun emailB sudah digabung ke akun $akun.
+     *
+     * @throws GagalKirim
+     */
+    public function kirimGabungSelesai(User $akun, string $emailB, string $kepada, string $namaWebsite): void
+    {
+        $this->kirim('user::email-gabung-selesai', $kepada, $akun->nama, "Akun sudah digabungkan {$namaWebsite}", [
+            'nama'        => $akun->nama,
+            'emailAkun'   => $akun->email,
+            'emailB'      => $emailB,
+            'namaWebsite' => $namaWebsite,
         ]);
     }
 
