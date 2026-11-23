@@ -33,6 +33,8 @@ final class RiwayatAkun
     public const UBAH_FOTO     = 'ubah_foto';
     /** 2.3: isian Tentang atau nama tampilan di website diubah. */
     public const UBAH_PROFIL   = 'ubah_profil';
+    /** 2.4: akun lain digabungkan ke akun ini. */
+    public const GABUNG_AKUN   = 'gabung_akun';
 
     /** Label peristiwa untuk tampilan. */
     private const LABEL = [
@@ -51,6 +53,7 @@ final class RiwayatAkun
         self::EMAIL_WEBSITE => 'Email website',
         self::UBAH_FOTO     => 'Ubah foto',
         self::UBAH_PROFIL   => 'Ubah profil',
+        self::GABUNG_AKUN   => 'Gabung akun',
     ];
 
     private const PANJANG_TEKS = 255;
