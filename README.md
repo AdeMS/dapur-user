@@ -41,6 +41,18 @@ vendor/bin/dapur-user pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
 
+### Memperbarui dari 2.3 ke 2.4
+
+Versi 2.4 menambah **Gabungkan akun** (lihat [Gabungkan akun](#gabungkan-akun)) dan perintah `gabung-akun`. Tidak ada
+tabel atau kolom baru, jadi `pasang` tidak perlu dijalankan lagi (asal sudah dijalankan untuk 2.3). Cukup:
+
+```bash
+composer update
+```
+
+lalu hapus cache konfigurasi. Modul yang memasang halaman Pengaturan & Privasi sendiri perlu meneruskan variabel
+`gabungAkun` ke `user::pengaturan-isi`.
+
 ### Memperbarui dari 2.2 ke 2.3
 
 Versi 2.3 menambah profil: nama depan, tengah, dan belakang, **foto**, bagian **Tentang**, dan **profil di website**
@@ -196,6 +208,7 @@ vendor/bin/dapur-user cabut-akses <email>             # mencabut akses user dari
 vendor/bin/dapur-user riwayat-akun [<email>]          # perubahan akun di lingkup ini, atau pada satu user
 vendor/bin/dapur-user daftar-email <email>            # semua email satu akun
 vendor/bin/dapur-user tambah-email <email> <baru>     # menambahkan email ke akun tanpa tautan konfirmasi
+vendor/bin/dapur-user gabung-akun <tetap> <tutup>     # menggabungkan akun <tutup> ke akun <tetap>
 ```
 
 Dengan paket multi-website, tambahkan `--website=<domain>` untuk website tertentu. Lingkup akses yang diberikan
@@ -207,6 +220,11 @@ kolom. Cara ini membuat instalasi lama ikut lengkap saat versi baru membutuhkan 
 
 `tambah-email` cocok bila pengiriman email belum diatur, atau untuk membantu user yang tidak bisa membuka tautan
 konfirmasi. Pastikan email itu memang milik orang yang sama, karena email tambahan bisa dipakai untuk masuk.
+
+`gabung-akun` menggabungkan akun dengan email `<tutup>` ke akun dengan email `<tetap>` (lihat
+[Gabungkan akun](#gabungkan-akun)). Berbeda dari halaman web, perintah ini juga bisa menggabungkan akun admin super.
+Sebelum berjalan, perintah menampilkan email dan akses yang akan pindah, lalu meminta konfirmasi; dari skrip
+(bukan terminal), tambahkan `--ya`. Penggabungan tidak bisa dibatalkan.
 
 `cabut-akses` hanya mencabut akses ke lingkup yang dituju; akun user dan aksesnya ke lingkup lain tetap ada.
 Admin super terakhir tidak bisa dicabut, agar Dapur tidak terkunci. Akses otomatis admin super ke website hanya
@@ -330,6 +348,39 @@ Sistem hanya mengenali orang dari email. Dua email yang belum disatukan dalam sa
 penggabungan otomatis lewat perangkat, IP, atau nama, karena salah gabung bisa membuka akun orang lain.
 
 Perubahan ini tercatat di riwayat akun: `tambah_email`, `hapus_email`, `email_utama`, dan `email_website`.
+
+## Gabungkan akun
+
+Kadang satu orang terlanjur punya dua akun, misalnya diundang ke website kantor dengan email kantor dan ke website
+lain dengan email pribadi. Di Pengaturan & Privasi > Akun Saya, bagian **Gabungkan akun** menyatukan akun lain (B) ke
+akun yang sedang dipakai (A):
+
+1. Klik **Gabungkan dengan akun lain**, tulis email akun B, lalu buktikan bahwa akun itu milik Anda dengan salah
+   satu cara:
+   - **kata sandi akun B**: langsung digabung. Kata sandi yang salah dihitung seperti login gagal ke akun B;
+   - **tautan konfirmasi ke email B** (bila pengiriman email aktif, berlaku 24 jam): halaman tautan menampilkan apa
+     saja yang akan pindah, dan akun baru digabung setelah tombol konfirmasi ditekan.
+2. Centang pernyataan bahwa penggabungan **tidak bisa dibatalkan**.
+
+Hasilnya:
+
+- semua email akun B menjadi email tambahan akun A, jadi tetap bisa dipakai untuk masuk, **dengan kata sandi A**;
+- akses B ke setiap website pindah ke A. Bila keduanya punya akses ke website yang sama, yang dipakai adalah **peran
+  yang lebih rendah** (demi keamanan); minta admin website itu menaikkannya bila perlu;
+- riwayat masuk dan riwayat akun B pindah ke A;
+- nama, kata sandi, foto akun, dan isian Tentang A tetap. Isian Tentang A yang masih kosong diisi dari B, dan profil
+  khusus website milik B dipakai hanya untuk website yang belum punya profil khusus dari A. Sisanya dibuang;
+- akun B ditutup, sehingga semua session akun B berakhir;
+- kedua email (email utama A dan email utama B) menerima pemberitahuan, dan penggabungan tercatat di riwayat akun
+  sebagai `gabung_akun`.
+
+Akun **admin super** (sebagai A maupun B) tidak bisa digabung dari halaman ini; admin server memakai perintah
+`vendor/bin/dapur-user gabung-akun <email-tetap> <email-tutup>`. Peran admin super tidak pernah turun karena
+penggabungan: bila salah satu akun admin super, akun hasil gabungan tetap admin super di dashboard utama (aturan peran
+yang lebih rendah hanya berlaku untuk peran lainnya). Penggabungan ditolak bila akun B nonaktif.
+
+Halaman ini sengaja tidak memberi tahu apakah sebuah email terdaftar: dengan kata sandi, email yang tidak ada dijawab
+"email atau kata sandi salah"; dengan tautan, jawabannya selalu "bila email itu akun lain, tautan sudah dikirim".
 
 ## Batasan domain email
 
@@ -463,7 +514,7 @@ Setiap perubahan akun dicatat bersama pelaku, user sasaran, lingkup tempat perub
 (misalnya `anggota → admin_web`), IP, dan perangkat: user dibuat, nama diubah, akses diberikan atau dicabut, peran
 diubah, akun diaktifkan atau dinonaktifkan, email ditambah, dihapus, dijadikan utama, atau dipilih untuk
 website, serta foto diganti atau dihapus (`ubah_foto`) dan isian Tentang atau nama di website diubah
-(`ubah_profil`). Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server
+(`ubah_profil`), serta akun lain digabungkan (`gabung_akun`). Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server
 yang menjalankannya (misalnya `terminal (budi)`, atau `www, lewat sudo dari budi`). Nama itu akun sistem di server,
 bukan akun Dapur, jadi tidak bisa membedakan orang yang memakai akun sistem yang sama.
 
