@@ -32,6 +32,7 @@ final class Perintah
         private readonly ?RiwayatMasuk $riwayat = null,
         private readonly ?\DateTimeZone $zonaWaktu = null,
         private readonly ?RiwayatAkun $riwayatAkun = null,
+        private readonly ?GabungAkun $gabung = null,
     ) {
     }
 
@@ -52,6 +53,7 @@ final class Perintah
             'riwayat-akun' => $this->tampilkanRiwayatAkun($utama[1] ?? null, $this->opsi($argumen, 'jumlah')),
             'daftar-email' => $this->daftarEmail($utama[1] ?? ''),
             'tambah-email' => $this->tambahEmail($utama[1] ?? '', $utama[2] ?? ''),
+            'gabung-akun'  => $this->gabungAkun($utama[1] ?? '', $utama[2] ?? '', in_array('--ya', $argumen, true)),
             default        => $this->bantuan(($utama[0] ?? '') === '' ? 0 : 1),
         };
     }
@@ -498,6 +500,67 @@ final class Perintah
         return 0;
     }
 
+    /**
+     * Menggabungkan akun <email-ditutup> ke akun <email-dipertahankan>, untuk admin server. Berbeda dari halaman
+     * Pengaturan & Privasi, perintah ini juga bisa menggabungkan akun admin super. Tidak bisa dibatalkan, jadi selalu
+     * meminta konfirmasi (di luar terminal, tambahkan --ya).
+     */
+    private function gabungAkun(string $emailA, string $emailB, bool $ya): int
+    {
+        $pemakaian = 'Pemakaian: dapur-user gabung-akun <email-dipertahankan> <email-ditutup> [--ya]';
+        $a         = $emailA !== '' ? $this->user->cariEmail($emailA) : null;
+        $b         = $emailB !== '' ? $this->user->cariEmail($emailB) : null;
+        if ($a === null || $b === null) {
+            return $this->gagal(($a === null ? 'Akun yang dipertahankan' : 'Akun yang ditutup') . " tidak ditemukan. {$pemakaian}");
+        }
+
+        $gabung = $this->gabung ?? new GabungAkun($this->db, $this->user, $this->tabel);
+        $alasan = $gabung->alasanDitolak($a, $b, false);
+        if ($alasan !== null) {
+            return $this->gagal($alasan === 'Email itu sudah milik akun Anda.' ? 'Kedua email milik akun yang sama.' : $alasan);
+        }
+
+        $ringkasan = $gabung->ringkasan($a, $b);
+        printf('Akun %s (%s) akan digabungkan ke akun %s (%s):%s', $b->email, $b->nama, $a->email, $a->nama, PHP_EOL);
+        printf('  email yang pindah: %s%s', implode(', ', $ringkasan['email'] ?: [$b->email]), PHP_EOL);
+        foreach ($ringkasan['akses'] as $x) {
+            printf(
+                "  akses '%s': %s%s%s",
+                $x['lingkup'],
+                DaftarUser::label($x['peranAkhir']),
+                $x['peranA'] === null || $x['peranA'] === $x['peranB'] ? '' : ($x['peranAkhir'] === DaftarUser::PERAN_ADMIN_SUPER
+                    ? ' (admin super dipertahankan)'
+                    : ' (peran lebih rendah dipakai)'),
+                PHP_EOL,
+            );
+        }
+        echo '  nama, kata sandi, dan foto akun tetap milik ' . $a->email . '; akun ' . $b->email . ' ditutup.' . PHP_EOL;
+
+        if (! $ya) {
+            if ($this->tanya === null) {
+                return $this->gagal('Penggabungan tidak bisa dibatalkan. Tambahkan --ya untuk menjalankannya di luar terminal.');
+            }
+
+            $jawaban = strtolower(trim(($this->tanya)('Gabungkan? Ini tidak bisa dibatalkan. [y/N]: ')));
+            if (! in_array($jawaban, ['y', 'ya'], true)) {
+                echo 'Akun tidak diubah.' . PHP_EOL;
+
+                return 0;
+            }
+        }
+
+        $gabung->gabung($a, $b);
+        $akses = array_column($ringkasan['akses'], 'lingkup');
+        $this->catatAkun(
+            RiwayatAkun::GABUNG_AKUN,
+            $a->id,
+            "akun {$b->email} ({$b->nama}) digabungkan" . ($akses === [] ? '' : '; akses: ' . implode(', ', $akses)),
+        );
+        printf('Akun %s sudah digabungkan ke akun %s.%s', $b->email, $a->email, PHP_EOL);
+
+        return 0;
+    }
+
     private function bantuan(int $kode): int
     {
         echo <<<BANTUAN
@@ -513,6 +576,8 @@ final class Perintah
               riwayat-akun [<email>]          Menampilkan perubahan akun di lingkup ini, atau pada satu user
               daftar-email <email>            Menampilkan semua email satu akun
               tambah-email <email> <baru>     Menambahkan email ke akun tanpa tautan konfirmasi
+              gabung-akun <tetap> <tutup>     Menggabungkan akun <tutup> ke akun <tetap> (tidak bisa dibatalkan;
+                                              --ya untuk menjalankan tanpa pertanyaan)
 
             Dengan paket adems/dapur-multiwebsite, tambahkan --website=<domain> untuk website tertentu.
 
