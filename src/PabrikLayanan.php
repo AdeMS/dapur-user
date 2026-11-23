@@ -45,6 +45,12 @@ final class PabrikLayanan
             PengaturanUser::class => new PengaturanUser($c->get(Adapter::class), self::tabel($c)),
             TokenUser::class => new TokenUser($c->get(Adapter::class), self::tabel($c)),
             FotoUser::class => new FotoUser($c->get(Pengaturan::class)->folderFoto),
+            GabungAkun::class => new GabungAkun(
+                $c->get(Adapter::class),
+                $c->get(DaftarUser::class),
+                self::tabel($c),
+                $c->get(FotoUser::class),
+            ),
             SuratUser::class => new SuratUser(
                 $c->get(PengirimEmail::class),
                 $c->get(SuratTemplat::class),
@@ -172,6 +178,7 @@ final class PabrikLayanan
             $c->get(Pengaturan::class)->domainEmail,
             $c->get(FotoUser::class),
             self::sumberLokasi($c),
+            $c->get(GabungAkun::class),
         );
     }
 
@@ -245,6 +252,7 @@ final class PabrikLayanan
             new HalamanPublik($c->get(TemplateRendererInterface::class), $pintu),
             $pintu,
             self::namaWebsite($c),
+            $c->get(GabungAkun::class),
         );
     }
 
