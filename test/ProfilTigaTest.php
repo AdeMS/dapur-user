@@ -241,6 +241,9 @@ final class ProfilTigaTest extends TestCase
         self::assertSame('/dashboard/lokasi', $this->renderer->data['alamatLokasi']);
         $this->handler(self::WEBSITE)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['tab' => 'profil']));
         self::assertNull($this->renderer->data['alamatLokasi'], 'Tanpa sumber kota, Lokasi teks bebas tanpa saran.');
+        $hilang = new SumberLokasi($this->db, ['kota' => ['tabel' => 'kota_tidak_ada']]);
+        $this->handler(self::WEBSITE, lokasi: $hilang)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['tab' => 'profil']));
+        self::assertNull($this->renderer->data['alamatLokasi'], 'Tabel kota tidak terbaca: tanpa saran dan tanpa keterangan saran.');
     }
 
     public function testProfilDiWebsite(): void
