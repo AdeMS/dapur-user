@@ -123,6 +123,11 @@ final class SumberLokasiTest extends TestCase
 
         self::assertSame(404, (new LokasiHandler(null))->handle($minta('Medan'))->getStatusCode());
 
+        $hilang = new LokasiHandler(new SumberLokasi($this->db, ['kota' => ['tabel' => 'kota_tidak_ada']]));
+        $jawab  = $hilang->handle($minta('Medan'));
+        self::assertSame(503, $jawab->getStatusCode(), 'Tabel kota tidak terbaca: bukan error 500.');
+        self::assertSame(['hasil' => []], json_decode((string) $jawab->getBody(), true));
+
         $sesi->simpan('user.lokasi_batas', [intdiv(time(), 60), LokasiHandler::BATAS_PER_MENIT]);
         self::assertSame(429, $handler->handle($minta('Medan'))->getStatusCode());
     }
