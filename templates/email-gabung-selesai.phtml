@@ -1,0 +1,14 @@
+<?php
+/**
+ * Pemberitahuan bahwa dua akun sudah digabung (HTML), dikirim ke email utama akun yang dipertahankan dan ke email akun
+ * yang ditutup.
+ *
+ * @var string $nama
+ * @var string $emailAkun   email utama akun yang dipertahankan
+ * @var string $emailB      email utama akun yang ditutup
+ * @var string $namaWebsite
+ */
+?>
+<p style="margin:0 0 12px;">Halo <?= $this->escapeHtml($this->nama) ?>,</p>
+<p style="margin:0 0 12px;">Akun <strong><?= $this->escapeHtml($this->emailB) ?></strong> di <strong><?= $this->escapeHtml($this->namaWebsite) ?></strong> sudah digabungkan ke akun <strong><?= $this->escapeHtml($this->emailAkun) ?></strong>. Email <?= $this->escapeHtml($this->emailB) ?> tetap bisa dipakai untuk masuk, dengan kata sandi akun <?= $this->escapeHtml($this->emailAkun) ?>.</p>
+<p style="margin:0;font-size:13px;color:#5c6b63;">Bila bukan Anda yang melakukannya, segera ganti kata sandi Anda dan hubungi admin.</p>
