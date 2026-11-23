@@ -1,33 +1,63 @@
 <?php
 /**
- * Konfirmasi email baru dari tautan verifikasi.
+ * Konfirmasi dari tautan di email: email baru (ganti atau tambah email), atau penggabungan akun (2.4).
  *
  * @var bool $tidakBerlaku
  * @var string|null $galat
  * @var string $token
- * @var string $emailBaru
- * @var string $emailLama
+ * @var string $emailBaru        email baru, atau (gabung) email akun yang akan ditutup
+ * @var string $emailLama        email utama akun; (gabung) email utama akun yang dipertahankan
  * @var bool $tambah             menambah email (bukan mengganti email utama)
+ * @var bool $gabung             menggabungkan akun $emailBaru ke akun $emailLama
+ * @var bool $selesai            (gabung) akun sudah digabungkan
+ * @var bool $tidakBisa          (gabung) akun tidak bisa digabungkan; alasannya di $galat
+ * @var string $namaAkun         (gabung) nama akun yang dipertahankan
+ * @var array{email: list<string>, akses: list<array{lingkup: string, peranB: string, peranA: ?string, peranAkhir: string}>} $ringkasan
  * @var string $alamatVerifikasi
  * @var string $alamatMasuk
  * @var string $tokenCsrf
  * @var string $fieldCsrf
  */
-$this->headTitle('Konfirmasi Email Baru');
+$gabung = $this->gabung ?? false;
+$judul  = $gabung ? 'Gabungkan Akun' : 'Konfirmasi Email Baru';
+$label  = static fn (string $peran): string => AdeMS\Dapur\User\DaftarUser::label($peran);
+$this->headTitle($judul);
 ?>
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-12 col-sm-9 col-md-6 col-lg-5">
+        <div class="<?= $gabung ? 'col-12 col-sm-10 col-md-8 col-lg-6' : 'col-12 col-sm-9 col-md-6 col-lg-5' ?>">
             <div class="card shadow-sm">
                 <div class="card-body p-4">
-                    <h1 class="h3 text-center mb-4">Konfirmasi Email Baru</h1>
+                    <h1 class="h3 text-center mb-4"><?= $this->escapeHtml($judul) ?></h1>
 <?php if ($this->tidakBerlaku) : ?>
                     <div class="alert alert-warning" role="status">Tautan ini salah, sudah pernah dipakai, atau sudah kedaluwarsa. Minta ulang dari halaman Pengaturan &amp; Privasi.</div>
                     <p class="text-center mb-0"><a href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Halaman masuk</a></p>
+<?php elseif ($gabung && ($this->selesai ?? false)) : ?>
+                    <div class="alert alert-success" role="status">Akun <strong><?= $this->escapeHtml($this->emailBaru) ?></strong> sudah digabungkan ke akun <strong><?= $this->escapeHtml($this->emailLama) ?></strong>.</div>
+                    <p>Email <?= $this->escapeHtml($this->emailBaru) ?> tetap bisa dipakai untuk masuk, dengan kata sandi akun <?= $this->escapeHtml($this->emailLama) ?>.</p>
+                    <a class="btn btn-success w-100 fw-semibold" href="<?= $this->escapeHtmlAttr($this->alamatMasuk) ?>">Ke halaman masuk</a>
 <?php else : ?>
 <?php if ($this->galat) : ?>
                     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
 <?php endif ?>
+<?php if ($gabung) : ?>
+<?php if (! ($this->tidakBisa ?? false)) : ?>
+                    <p>Akun <strong><?= $this->escapeHtml($this->emailBaru) ?></strong> akan digabungkan ke akun <strong><?= $this->escapeHtml($this->namaAkun) ?></strong> (<?= $this->escapeHtml($this->emailLama) ?>):</p>
+                    <ul>
+                        <li>Email <?= $this->escapeHtml(implode(', ', $this->ringkasan['email'] ?: [$this->emailBaru])) ?> menjadi email tambahan akun itu dan tetap bisa dipakai untuk masuk, dengan kata sandi akun itu.</li>
+<?php foreach ($this->ringkasan['akses'] as $x) : ?>
+                        <li>Akses ke <code><?= $this->escapeHtml($x['lingkup']) ?></code>: <?= $this->escapeHtml($label($x['peranAkhir'])) ?><?php if ($x['peranA'] !== null && $x['peranA'] !== $x['peranB'] && $x['peranAkhir'] !== AdeMS\Dapur\User\DaftarUser::PERAN_ADMIN_SUPER) : ?> <span class="text-body-secondary">(peran lebih rendah dipakai)</span><?php endif ?></li>
+<?php endforeach ?>
+                        <li>Nama, kata sandi, dan foto akun tetap milik akun <?= $this->escapeHtml($this->emailLama) ?>.</li>
+                    </ul>
+                    <div class="alert alert-warning" role="note"><strong>Penggabungan tidak bisa dibatalkan.</strong> Akun <?= $this->escapeHtml($this->emailBaru) ?> ditutup sesudahnya.</div>
+                    <form method="post" action="<?= $this->escapeHtmlAttr($this->alamatVerifikasi) ?>">
+                        <input type="hidden" name="<?= $this->escapeHtmlAttr($this->fieldCsrf) ?>" value="<?= $this->escapeHtmlAttr($this->tokenCsrf) ?>">
+                        <input type="hidden" name="token" value="<?= $this->escapeHtmlAttr($this->token) ?>">
+                        <button type="submit" class="btn btn-success w-100 fw-semibold">Ya, gabungkan akun ini</button>
+                    </form>
+<?php endif ?>
+<?php else : ?>
 <?php if ($this->tambah ?? false) : ?>
                     <p><strong><?= $this->escapeHtml($this->emailBaru) ?></strong> akan ditambahkan ke akun Anda. Sesudah itu email ini bisa dipakai untuk masuk dan dipilih sebagai email untuk website tertentu.</p>
 <?php else : ?>
@@ -38,6 +68,7 @@ $this->headTitle('Konfirmasi Email Baru');
                         <input type="hidden" name="token" value="<?= $this->escapeHtmlAttr($this->token) ?>">
                         <button type="submit" class="btn btn-success w-100 fw-semibold"><?= ($this->tambah ?? false) ? 'Ya, tambahkan email ini' : 'Ya, ganti email saya' ?></button>
                     </form>
+<?php endif ?>
 <?php endif ?>
                 </div>
             </div>
