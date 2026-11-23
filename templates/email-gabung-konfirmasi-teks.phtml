@@ -1,0 +1,23 @@
+<?php
+/**
+ * Konfirmasi penggabungan akun (teks biasa).
+ *
+ * @var string $nama
+ * @var string $emailAkun
+ * @var string $emailB
+ * @var string $tautan
+ * @var string $namaWebsite
+ * @var int $jam
+ */
+?>
+Halo,
+
+<?= $this->nama ?> (<?= $this->emailAkun ?>) meminta agar akun <?= $this->emailB ?> di <?= $this->namaWebsite ?> digabungkan ke akunnya.
+
+Bila digabung, email ini menjadi email tambahan akun tersebut, akses website akun ini ikut pindah, dan akun ini ditutup. Penggabungan tidak bisa dibatalkan. Lanjutkan hanya bila kedua akun memang milik Anda:
+
+<?= $this->tautan ?>
+
+
+Tautan berlaku <?= (int) $this->jam ?> jam dan hanya bisa dipakai sekali.
+Bila bukan Anda yang memintanya, abaikan email ini. Akun Anda tidak berubah.
