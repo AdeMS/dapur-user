@@ -51,6 +51,7 @@ $warnaAkun = [
     'email_website' => 'secondary',
     'ubah_foto'     => 'secondary',
     'ubah_profil'   => 'secondary',
+    'gabung_akun'   => 'warning',
 ];
 $profilSiap   = $this->profilTersedia ?? false;
 $fotoSiap     = $this->fotoSiap ?? false;
@@ -97,12 +98,14 @@ $aktivitas = $this->aktivitas ?? [];
 $aksi      = $this->escapeHtmlAttr($this->alamatPengaturan);
 $tabs      = ['akun' => 'Akun Saya'] + (($this->profilTersedia ?? false) ? ['profil' => 'Profil'] : []) + ['aktivitas' => 'Aktivitas', 'riwayat' => 'Riwayat masuk'];
 $tab       = isset($tabs[$this->tab ?? '']) ? $this->tab : 'akun';
+$gabungAkun = $this->gabungAkun ?? null;
 $galatDi   = fn (string $bagian): bool => $this->galat && $this->galatBagian === $bagian;
 $daftarEmail = $this->daftarEmail ?? [];
 $popupBuka = match (true) {
     $galatDi('sandi')                     => 'sandi',
     $galatDi('email') && $bisaEmail        => 'email',
     $galatDi('tambah_email') && $bisaEmail => 'tambah-email',
+    $galatDi('gabung') && ($gabungAkun['tersedia'] ?? false) => 'gabung-akun',
     default                               => null,
 };
 // Email yang sedang dipakai di website ini: pilihan user, atau email utama.
@@ -305,6 +308,21 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                     <button type="reset" form="pengaturan-form-nama" class="btn btn-outline-secondary">Batal</button>
                     <button type="submit" form="pengaturan-form-nama" class="btn btn-success">Simpan</button>
                 </div>
+<?php if ($gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun['adminSuper'])) : ?>
+                <hr class="my-4">
+                <section aria-labelledby="pengaturan-judul-gabung">
+                    <h3 class="h6" id="pengaturan-judul-gabung">Gabungkan akun</h3>
+<?php if ($galatDi('gabung') && ! $gabungAkun['tersedia']) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+<?php if ($gabungAkun['tersedia']) : ?>
+                    <p class="small text-body-secondary col-lg-10 col-xl-8">Punya akun lain di sini dengan email berbeda, misalnya email kantor? Gabungkan ke akun ini: email itu menjadi email tambahan akun ini dan akses websitenya ikut pindah. Nama, kata sandi, dan foto akun ini tetap.</p>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-gabung-akun"><i class="bi bi-people me-1" aria-hidden="true"></i>Gabungkan dengan akun lain</button>
+<?php else : ?>
+                    <p class="small text-body-secondary mb-0">Akun admin super hanya bisa digabungkan oleh admin server lewat terminal (<code>vendor/bin/dapur-user gabung-akun</code>).</p>
+<?php endif ?>
+                </section>
+<?php endif ?>
             </div>
 <?php if ($profilSiap) : ?>
             <div class="tab-pane fade<?= $tab === 'profil' ? ' show active' : '' ?>" id="pengaturan-profil" role="tabpanel" aria-labelledby="pengaturan-tab-profil" tabindex="0">
@@ -462,6 +480,68 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
             </div>
         </div>
     </div>
+<?php if ($gabungAkun !== null && $gabungAkun['tersedia']) : ?>
+    <div class="modal fade" id="pengaturan-popup-gabung-akun" tabindex="-1" aria-labelledby="pengaturan-popup-gabung-akun-judul" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form class="modal-content" method="post" action="<?= $aksi ?>" autocomplete="off">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="pengaturan-popup-gabung-akun-judul">Gabungkan Akun</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+<?php if ($galatDi('gabung')) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+                    <?= $csrf ?>
+                    <input type="hidden" name="aksi" value="gabung_akun">
+                    <p class="small">Akun lain itu akan <strong>ditutup</strong>: semua emailnya menjadi email tambahan akun ini (tetap bisa dipakai untuk masuk dengan kata sandi akun ini), akses websitenya pindah ke akun ini, dan riwayatnya ikut pindah. Bila kedua akun punya akses ke website yang sama, peran yang lebih rendah yang dipakai.</p>
+                    <div class="mb-3">
+                        <label class="form-label" for="pengaturan-gabung-email">Email akun lain</label>
+                        <input class="form-control" id="pengaturan-gabung-email" name="email_akun" type="email" maxlength="190" required value="<?= $this->escapeHtmlAttr($gabungAkun['email']) ?>">
+                    </div>
+                    <fieldset class="mb-3">
+                        <legend class="form-label fs-6">Bukti bahwa akun itu milik Anda</legend>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cara" id="pengaturan-gabung-cara-sandi" value="sandi"<?= $gabungAkun['cara'] === 'sandi' ? ' checked' : '' ?>>
+                            <label class="form-check-label" for="pengaturan-gabung-cara-sandi">Kata sandi akun itu</label>
+                        </div>
+<?php if ($gabungAkun['bisaTautan']) : ?>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cara" id="pengaturan-gabung-cara-tautan" value="tautan"<?= $gabungAkun['cara'] === 'tautan' ? ' checked' : '' ?>>
+                            <label class="form-check-label" for="pengaturan-gabung-cara-tautan">Kirim tautan konfirmasi ke email itu</label>
+                        </div>
+<?php endif ?>
+                    </fieldset>
+                    <div class="mb-3 user-gabung-sandi">
+                        <label class="form-label" for="pengaturan-gabung-sandi">Kata sandi akun itu</label>
+                        <input class="form-control" id="pengaturan-gabung-sandi" name="sandi_akun" type="password" autocomplete="off">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="setuju" value="1" id="pengaturan-gabung-setuju" required>
+                        <label class="form-check-label" for="pengaturan-gabung-setuju">Saya mengerti bahwa penggabungan <strong>tidak bisa dibatalkan</strong>.</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success">Gabungkan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Isian kata sandi hanya untuk cara "kata sandi akun itu".
+        (() => {
+            const popup = document.getElementById('pengaturan-popup-gabung-akun');
+            const atur  = () => {
+                const sandi = popup.querySelector('#pengaturan-gabung-cara-sandi').checked;
+                popup.querySelector('.user-gabung-sandi').classList.toggle('d-none', ! sandi);
+                popup.querySelector('#pengaturan-gabung-sandi').required = sandi;
+            };
+            popup.querySelectorAll('input[name="cara"]').forEach((r) => r.addEventListener('change', atur));
+            atur();
+        })();
+    </script>
+<?php endif ?>
     <div class="modal fade" id="pengaturan-popup-sandi" tabindex="-1" aria-labelledby="pengaturan-popup-sandi-judul" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <form method="post" action="<?= $aksi ?>" class="modal-content">
