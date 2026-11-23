@@ -23,12 +23,19 @@ final class TokenUser
     /** Konfirmasi email tambahan untuk akun (2.2); datanya email yang ditambahkan. */
     public const TAMBAH_EMAIL = 'tambah_email';
 
+    /**
+     * Konfirmasi penggabungan akun (2.4), dikirim ke email akun yang akan ditutup. Token milik akun yang dipertahankan;
+     * datanya "<id akun yang ditutup>|<email itu>".
+     */
+    public const GABUNG_AKUN = 'gabung_akun';
+
     /** Masa berlaku token, dalam detik. */
     public const MASA_BERLAKU = [
         self::UNDANGAN    => 48 * 3600,
         self::LUPA_SANDI  => 3600,
         self::GANTI_EMAIL => 24 * 3600,
         self::TAMBAH_EMAIL => 24 * 3600,
+        self::GABUNG_AKUN  => 24 * 3600,
     ];
 
     public const PESAN_BELUM_DIPASANG = 'Tabel token belum dibuat. Jalankan "vendor/bin/dapur-user pasang" dari folder inti Dapur.';
