@@ -17,7 +17,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Pengaturan & Privasi. Harus dipasang di belakang WajibMasukMiddleware: hanya user yang login yang bisa mencari.
  *
  * Jawaban: {"hasil": [{"id": 123, "teks": "Kota Bandung, Jawa Barat, Indonesia"}, ...]}. 404 bila sumber kota
- * tidak tersedia; 429 bila satu session mencari terlalu sering.
+ * tidak diatur; 503 bila tabel kota tidak terbaca; 429 bila satu session mencari terlalu sering.
  */
 final class LokasiHandler implements RequestHandlerInterface
 {
@@ -41,8 +41,13 @@ final class LokasiHandler implements RequestHandlerInterface
             return new JsonResponse(['hasil' => []], 429, ['Retry-After' => '60', 'Cache-Control' => 'no-store']);
         }
 
-        $cari  = $request->getQueryParams()['cari'] ?? '';
-        $hasil = is_string($cari) ? $this->sumber->cari($cari) : [];
+        $cari = $request->getQueryParams()['cari'] ?? '';
+        try {
+            $hasil = is_string($cari) ? $this->sumber->cari($cari) : [];
+        } catch (\Throwable) {
+            // Tabel kota tidak terbaca (belum dipasang atau tanpa hak baca): tanpa saran, Lokasi tetap bisa diketik.
+            return new JsonResponse(['hasil' => []], 503, ['Cache-Control' => 'no-store']);
+        }
 
         return new JsonResponse(['hasil' => $hasil], 200, ['Cache-Control' => 'no-store']);
     }
