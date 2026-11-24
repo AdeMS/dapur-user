@@ -127,6 +127,19 @@ $tombolLagi = function (string $tab, ?int $jumlah, int $sekarang): string {
 };
 $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) . '" value="'
     . $this->escapeHtmlAttr($this->tokenCsrf) . '">';
+// Status singkat di samping foto akun (tab Profil): diketik bebas, kosongkan untuk menghapus.
+$statusAkun = (string) ($this->statusAkun ?? '');
+$formStatus = '<form method="post" action="' . $this->escapeHtmlAttr((string) $this->alamatPengaturan) . '" class="mb-2">' . $csrf
+    . '<input type="hidden" name="aksi" value="status">'
+    . '<label class="visually-hidden" for="pengaturan-status">Status saat ini</label>'
+    . '<div class="input-group">'
+    . '<input class="form-control" id="pengaturan-status" name="status" type="text" maxlength="100" autocomplete="off"'
+    . ' placeholder="Status saat ini…" value="' . $this->escapeHtmlAttr($statusAkun) . '">'
+    . '<button type="submit" class="btn btn-outline-success" title="Simpan status" aria-label="Simpan status">'
+    . '<i class="bi bi-check-lg" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Simpan</span></button>'
+    . '</div>'
+    . ($this->galat && $this->galatBagian === 'status' ? '<div class="text-danger small mt-1" role="alert">' . $this->escapeHtml($this->galat) . '</div>' : '')
+    . '</form>';
 ?>
 <style>
     .user-pengaturan .nav-tabs .nav-link { white-space: nowrap; }
@@ -160,6 +173,7 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
     /* Baris tujuan tombol "Tampilkan lebih banyak" tidak tertutup navbar */
     .user-pengaturan tbody tr { scroll-margin-top: 6rem; }
     .user-tambah-email { max-width: 22rem; }
+    .user-status { max-width: 30rem; }
     .user-tambah-email .dropdown-item, .user-tambah-email .dropdown-item-text { white-space: normal; }
 </style>
 <div class="container py-4 user-pengaturan">
@@ -371,15 +385,21 @@ $gabungTampil = $gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun[
                 <div class="d-flex flex-wrap align-items-center gap-3">
 <?php if ($fotoSiap) : ?>
                     <?= $pemilihFoto('akun', $this->fotoAkun ?? null, ($this->fotoAkun ?? null) !== null) ?>
-                    <div class="form-text mb-0">
+                    <div class="flex-grow-1 user-status">
+                        <?= $formStatus ?>
+                        <div class="form-text mb-0">
 <?php if (($this->fotoAkun ?? null) === null) : ?>
-                        Klik foto untuk mengambil dari kamera atau mengunggahnya.<br>
-                        JPG, PNG, atau WebP, paling besar 2 MB. Foto dipotong persegi.
+                            Klik foto untuk mengambil dari kamera atau mengunggahnya.
+                            JPG, PNG, atau WebP, paling besar 2 MB. Foto dipotong persegi.
 <?php endif ?>
-                        <span class="d-block text-danger user-foto-galat" data-untuk="pengaturan-foto-akun" role="alert"></span></div>
+                            <span class="d-block text-danger user-foto-galat" data-untuk="pengaturan-foto-akun" role="alert"></span></div>
+                    </div>
 <?php else : ?>
                     <?= $this->partial('user::avatar', ['foto' => $this->fotoAkun ?? null, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']) ?>
-                    <div class="form-text mb-0">Foto belum bisa diunggah: folder foto belum bisa ditulis oleh web server.</div>
+                    <div class="flex-grow-1 user-status">
+                        <?= $formStatus ?>
+                        <div class="form-text mb-0">Foto belum bisa diunggah: folder foto belum bisa ditulis oleh web server.</div>
+                    </div>
 <?php endif ?>
                 </div>
                 </section>
