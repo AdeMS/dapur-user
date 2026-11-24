@@ -212,6 +212,26 @@ final class GabungAkunTest extends TestCase
         self::assertSame(1, $this->daftar->jumlahAdminSuper());
     }
 
+    public function testRiwayatAkunBTetapMenunjukkanAkunAsal(): void
+    {
+        $riwayat = new RiwayatAkun($this->db);
+        // Catatan sesudah 2.5 sudah membawa email saat kejadian.
+        $riwayat->catat(RiwayatAkun::UBAH_NAMA, $this->b, $this->b, 'kantor.test', 'baru');
+        // Catatan lama (sebelum 2.5) tanpa email saat kejadian.
+        $riwayat->catat(RiwayatAkun::UBAH_NAMA, $this->b, $this->b, 'kantor.test', 'lama');
+        $this->db->query("UPDATE \"user_riwayat_akun\" SET pelaku_email = '', sasaran_email = '' WHERE keterangan = 'lama'", Adapter::QUERY_MODE_EXECUTE);
+
+        $this->gabung()->gabung($this->user($this->a), $this->user($this->b));
+
+        $aktivitas = $riwayat->aktivitasUser($this->a);
+        foreach (['baru', 'lama'] as $ket) {
+            $baris = array_values(array_filter($aktivitas, static fn (array $x): bool => $x['keterangan'] === $ket))[0];
+            self::assertSame('ade@pribadi.com', $baris['pelaku'], $ket);
+            self::assertSame('ade@kantor.com', $baris['pelakuSaat'], $ket);
+            self::assertSame('ade@kantor.com', $baris['sasaranSaat'], $ket);
+        }
+    }
+
     public function testPeranGabungan(): void
     {
         self::assertSame(DaftarUser::PERAN_ADMIN_SUPER, GabungAkun::peranGabungan(DaftarUser::PERAN_ADMIN_SUPER, DaftarUser::PERAN_ANGGOTA));
