@@ -283,6 +283,16 @@ biografi).
 ke lingkup yang sama; selain itu "User tidak ditemukan di sini" (404). Nama di daftar user halaman User membuka
 halaman ini. Modul lain bisa menautkannya juga.
 
+### Status
+
+Di samping foto akun (Pengaturan & Privasi > Profil) ada isian **Status saat ini…**: kalimat singkat yang diketik
+bebas, satu baris, paling panjang 100 karakter, misalnya "Sedang cuti sampai Senin". Status tampil di bawah nama
+pada halaman Profil, di menu avatar (tanpa status muncul tautan **Atur status…**; keduanya membuka tab Profil), dan
+kecil di bawah nama pada daftar user, sehingga bisa dilihat rekan di website yang sama, seperti bagian Tentang.
+Status sama di semua website. Modul yang memakai `Identitas` bisa membacanya lewat `$identitas->status`. Kosongkan lalu simpan untuk
+menghapusnya. Perubahan status tidak dicatat di riwayat akun, karena bisa sering berganti. Status disimpan di tabel
+`user_profil` (kunci `status`), jadi tidak perlu `pasang`.
+
 ### Foto profil
 
 Foto diunggah di Pengaturan & Privasi: JPG, PNG, atau WebP paling besar 2 MB. Foto dibuat ulang dengan ekstensi PHP
