@@ -35,6 +35,11 @@ final class ProfilUser
      */
     public const LOKASI_ID = 'lokasi_id';
 
+    /** Status singkat yang diketik bebas, misalnya "Sedang cuti sampai Senin"; satu baris. */
+    public const STATUS = 'status';
+
+    public const PANJANG_STATUS_MAKS = 100;
+
     /** Kunci profil per website. */
     public const NAMA = 'nama';
     public const FOTO = 'foto';
