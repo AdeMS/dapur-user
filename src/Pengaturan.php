@@ -37,6 +37,23 @@ final class Pengaturan
      */
     public readonly string $folderFoto;
 
+    /**
+     * Isi $config['user'] dari konfigurasi lengkap. Awalan tabel bersama `'database' => ['awalan_tabel' => ...]`
+     * (sejak 2.5, dipakai semua modul) menang atas `'user' => ['awalan_tabel' => ...]` yang lama.
+     *
+     * @return array<string, mixed>
+     */
+    public static function configUser(mixed $config): array
+    {
+        $config = is_array($config) ? $config : [];
+        $user   = is_array($config['user'] ?? null) ? $config['user'] : [];
+        if (isset($config['database']['awalan_tabel'])) {
+            $user['awalan_tabel'] = $config['database']['awalan_tabel'];
+        }
+
+        return $user;
+    }
+
     /** @param array<string, mixed> $config */
     public function __construct(array $config)
     {
