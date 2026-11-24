@@ -37,7 +37,12 @@ $namaUser = function (array $a): string {
         ? '<a class="link-body-emphasis text-decoration-none" href="' . $this->escapeHtmlAttr($this->alamatProfil . '?id=' . (int) $a['id']) . '">' . $this->escapeHtml($nama) . '</a>'
         : '<span>' . $this->escapeHtml($nama) . '</span>';
 
-    return $h . ($a['diriSendiri'] ? ' <span class="badge text-bg-secondary">Anda</span>' : '') . '</div>';
+    $h .= ($a['diriSendiri'] ? ' <span class="badge text-bg-secondary">Anda</span>' : '') . '</div>';
+
+    // Status singkat user, kecil di bawah nama (sejajar dengan nama, sesudah foto).
+    return $h . (($a['status'] ?? '') !== ''
+        ? '<div class="small fst-italic text-body-secondary text-break user-daftar-status" style="margin-left: 2.25rem"><span class="visually-hidden">Status: </span>' . $this->escapeHtml($a['status']) . '</div>'
+        : '');
 };
 // Kotak cari (GET ke halaman ini).
 $formCari = function (int $hasil, string $satuan) use ($cari, $aksi): string {
