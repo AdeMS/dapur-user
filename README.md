@@ -17,6 +17,8 @@ beberapa website.
   per website
 - [adems/dapur-email](https://github.com/AdeMS/dapur-email) 1.0 (ikut terpasang otomatis); fitur email aktif
   setelah pengiriman email diatur
+- [adems/dapur-database](https://github.com/AdeMS/dapur-database) 1.0 (ikut terpasang otomatis) untuk memasang
+  tabel; perintah `php dapur pasang` butuh Dapur AdeMS 2.10 atau lebih baru
 
 ## Pemasangan
 
@@ -31,15 +33,38 @@ Paket ini biasanya ikut terpasang sebagai kebutuhan modul lain. Untuk memasangny
 }
 ```
 
-Bila tabel perlu awalan nama (misalnya karena database dipakai bersama aplikasi lain), atur `awalan_tabel` lebih
-dulu (lihat [Pengaturan](#pengaturan)). Lalu buat tabel dan admin pertama dari folder inti. Admin yang dibuat di
-inti menjadi **admin super**. Kata sandi diketik tanpa terlihat; minimal 12 karakter untuk admin dan 8 karakter
-untuk anggota:
+Bila tabel perlu awalan nama (misalnya karena database dipakai bersama aplikasi lain), atur awalannya lebih dulu
+(lihat [Nama tabel](#nama-tabel)). Lalu buat tabel dan admin pertama dari folder inti. Admin yang dibuat di inti
+menjadi **admin super**. Kata sandi diketik tanpa terlihat; minimal 12 karakter untuk admin dan 8 karakter untuk
+anggota:
 
 ```bash
-vendor/bin/dapur-user pasang
+php dapur pasang
 vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 ```
+
+`php dapur pasang` membuat tabel semua modul yang terpasang sekaligus (lihat README
+[adems/dapur-database](https://github.com/AdeMS/dapur-database)). Pada Dapur AdeMS sebelum 2.10, pakai
+`vendor/bin/dapur-user pasang`, yang hanya memasang tabel modul ini.
+
+### Memperbarui dari 2.4 ke 2.5
+
+Versi 2.5 memindahkan pemasangan tabel ke paket [adems/dapur-database](https://github.com/AdeMS/dapur-database)
+(ikut terpasang otomatis), dan menyimpan email pelaku serta sasaran saat kejadian di riwayat akun (lihat
+[Riwayat akun](#riwayat-akun)). Sesudah `composer update`, **wajib** jalankan sekali:
+
+```bash
+php dapur pasang
+```
+
+Perintah ini membuat tabel catatan `dapur_skema` (dengan awalan yang sama), menambah kolom `pelaku_email` dan
+`sasaran_email` di tabel `user_riwayat_akun`, lalu mencatat langkah data lama (peran admin 2.0 dan email utama 2.2)
+sebagai sudah dijalankan; data user tidak berubah. Catatan riwayat yang dibuat sebelum 2.5 tidak punya email saat
+kejadian, jadi tampil seperti sebelumnya. Sebelum `pasang`, riwayat tetap dicatat tanpa kedua kolom itu. `vendor/bin/dapur-user
+pasang` tetap bisa dipakai dan kini mengerjakan hal yang sama untuk modul user saja.
+
+Awalan tabel kini bisa ditulis di satu tempat untuk semua modul, `'database' => ['awalan_tabel' => ...]`.
+Pengaturan lama `'user' => ['awalan_tabel' => ...]` tetap dibaca; tidak perlu diubah.
 
 ### Memperbarui dari 2.3 ke 2.4
 
@@ -193,13 +218,20 @@ return [
 | `user_token` | `xyz_user_token` | Token sekali pakai untuk tautan email (hanya hash-nya) |
 | `user_email` | `xyz_user_email` | Semua email milik akun yang sudah dikonfirmasi |
 
-Awalan hanya boleh berisi huruf, angka, dan garis bawah, paling panjang 32 karakter. Perintah `dapur-user`
-membaca pengaturan yang sama, jadi atur awalan sebelum menjalankan `pasang`.
+Sejak 2.5, awalan sebaiknya ditulis di pengaturan bersama semua modul (ikut dipakai tabel catatan `dapur_skema`):
+
+```php
+return ['database' => ['awalan_tabel' => 'xyz_']];
+```
+
+Pengaturan lama `'user' => ['awalan_tabel' => 'xyz_']` tetap dibaca; bila keduanya ada, `database` yang dipakai.
+Awalan hanya boleh berisi huruf, angka, dan garis bawah, paling panjang 32 karakter. Atur awalan sebelum
+menjalankan `pasang` pertama kali.
 
 ## Perintah
 
 ```bash
-vendor/bin/dapur-user pasang                          # membuat tabel dan kolom yang belum ada, aman diulang
+vendor/bin/dapur-user pasang                          # tabel modul user saja; untuk semua modul: php dapur pasang
 vendor/bin/dapur-user buat-admin <email>              # membuat admin super (inti) atau admin web (--website)
 vendor/bin/dapur-user ganti-sandi <email>             # mengganti kata sandi
 vendor/bin/dapur-user riwayat <email> [--jumlah=20]   # menampilkan riwayat login user
@@ -214,9 +246,11 @@ vendor/bin/dapur-user gabung-akun <tetap> <tutup>     # menggabungkan akun <tutu
 Dengan paket multi-website, tambahkan `--website=<domain>` untuk website tertentu. Lingkup akses yang diberikan
 `buat-admin` adalah `dashboard` di inti (peran admin super), atau nama domain website (peran admin web).
 
-`pasang` melaporkan setiap tabel: `dibuat` atau `sudah ada`, lalu setiap kolom baru yang ditambahkan ke tabel lama
-(`ALTER TABLE ... ADD COLUMN`). Data yang sudah ada tidak diubah; perintah ini tidak pernah menghapus tabel atau
-kolom. Cara ini membuat instalasi lama ikut lengkap saat versi baru membutuhkan kolom tambahan.
+`pasang` membuat tabel yang belum ada, menambahkan kolom baru ke tabel lama (`ALTER TABLE ... ADD COLUMN`), lalu
+menjalankan langkah data yang belum pernah dijalankan, dan melaporkan setiap perubahan. Data yang sudah ada tidak
+diubah; perintah ini tidak pernah menghapus tabel atau kolom. Sejak 2.5 pekerjaan ini dilakukan paket
+[adems/dapur-database](https://github.com/AdeMS/dapur-database), sama seperti `php dapur pasang user`, tetapi tanpa
+bertanya lebih dulu.
 
 `tambah-email` cocok bila pengiriman email belum diatur, atau untuk membantu user yang tidak bisa membuka tautan
 konfirmasi. Pastikan email itu memang milik orang yang sama, karena email tambahan bisa dipakai untuk masuk.
@@ -517,6 +551,13 @@ website, serta foto diganti atau dihapus (`ubah_foto`) dan isian Tentang atau na
 (`ubah_profil`), serta akun lain digabungkan (`gabung_akun`). Perubahan lewat perintah di terminal dicatat tanpa pelaku, tetapi dengan nama akun sistem server
 yang menjalankannya (misalnya `terminal (budi)`, atau `www, lewat sudo dari budi`). Nama itu akun sistem di server,
 bukan akun Dapur, jadi tidak bisa membedakan orang yang memakai akun sistem yang sama.
+
+Sejak 2.5, setiap catatan juga menyimpan **email pelaku dan sasaran saat kejadian** (kolom `pelaku_email` dan
+`sasaran_email`). Pelaku dan sasaran tetap ditampilkan dengan identitas akun yang sekarang; bila email saat
+kejadian berbeda, email itu ditulis di bawahnya, misalnya *sebagai lama@contoh.com*. Ini membuat riwayat tetap jujur
+sesudah email berganti atau akun digabung: catatan yang dibuat akun B sebelum digabung tetap terlihat berasal dari
+B. Keterangan ini hanya tampil di tab Aktivitas milik sendiri (untuk diri sendiri) dan di dashboard utama (admin
+super); di dashboard website tidak ditampilkan, agar email pribadi tidak terlihat oleh rekan.
 
 Riwayat akun disimpan selamanya. Lihat dengan `vendor/bin/dapur-user riwayat-akun`, atau di bagian aktivitas
 terakhir pada halaman kelola user.
