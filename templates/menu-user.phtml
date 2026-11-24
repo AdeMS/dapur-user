@@ -53,6 +53,8 @@ $avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
     .user-avatar-menu { width: 2.75rem; height: 2.75rem; font-size: 1.05rem; }
     /* Avatar sedikit lebih dekat ke tepi kiri; item submenu di bawahnya tetap memakai jarak bawaan */
     .user-menu-kepala { padding-left: .75rem; }
+    /* Status di submenu: boleh beberapa baris, tidak melebarkan menu */
+    .user-menu-status { white-space: normal; max-width: 18rem; font-size: .875rem; }
 </style>
 <?php $this->placeholder('menu-kanan')->captureStart() ?>
                             <li class="nav-item dropdown">
@@ -67,6 +69,17 @@ $avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
                                             <div class="small text-body-secondary"><?= $this->escapeHtml($identitas?->email ?? $this->emailTampil ?? $this->user->email) ?></div>
                                         </div>
                                     </li>
+<?php
+// Status: tampil di bawah nama; tanpa status, ajakan "Atur status" bila halaman Pengaturan & Privasi ada. Keduanya
+// membuka tab Profil, tempat status diubah.
+$statusMenu    = $identitas?->status ?? '';
+$alamatStatus  = ($this->alamatPengaturan ?? null) ? $this->alamatPengaturan . '?tab=profil' : null;
+?>
+<?php if ($statusMenu !== '') : ?>
+                                    <li><?= $alamatStatus !== null ? '<a class="dropdown-item user-menu-status" href="' . $this->escapeHtmlAttr($alamatStatus) . '" title="Ubah status">' : '<span class="dropdown-item-text user-menu-status">' ?><i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($statusMenu) ?></em><?= $alamatStatus !== null ? '</a>' : '</span>' ?></li>
+<?php elseif ($alamatStatus !== null && $identitas !== null) : ?>
+                                    <li><a class="dropdown-item user-menu-status text-body-secondary" href="<?= $this->escapeHtmlAttr($alamatStatus) ?>"><i class="bi bi-chat-quote me-2" aria-hidden="true"></i>Atur status…</a></li>
+<?php endif ?>
                                     <li><hr class="dropdown-divider"></li>
 <?php if ($this->alamatProfil ?? null) : ?>
                                     <li><a class="dropdown-item" href="<?= $this->escapeHtmlAttr($this->alamatProfil) ?>"><i class="bi bi-person-circle me-2"></i>Profil</a></li>
