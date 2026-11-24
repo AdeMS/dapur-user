@@ -5,7 +5,7 @@
  * (?id=<nomor>). Nama, foto, dan Tentang diatur di Pengaturan & Privasi (user::pengaturan-isi).
  *
  * @var AdeMS\Dapur\User\User $user
- * @var array<string, mixed>|null $profil  id, nama, email, foto, inisial, peran, aktif, tentang, diri
+ * @var array<string, mixed>|null $profil  id, nama, email, foto, inisial, peran, aktif, tentang, status, diri
  * @var bool $tidakDitemukan              profil rekan tidak ada atau tidak punya akses ke lingkup ini
  * @var string|null $pesan                pesan berhasil
  * @var string|null $galat                pesan kesalahan
@@ -82,6 +82,9 @@ $profil = $this->profil ?? (($this->tidakDitemukan ?? false) ? null : [
 <?php endif ?>
                         <h2 class="h5 mb-0"><?= $this->escapeHtml($profil['nama']) ?></h2>
                         <div class="text-body-secondary text-break"><?= $this->escapeHtml($profil['email']) ?></div>
+<?php if (($profil['status'] ?? '') !== '') : ?>
+                        <p class="fst-italic text-break mt-2 mb-0"><i class="bi bi-chat-quote me-1 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><?= $this->escapeHtml($profil['status']) ?></p>
+<?php endif ?>
                     </div>
                     <dl class="user-profil-data mb-3">
 <?php if ($profil['peran']) : ?>
