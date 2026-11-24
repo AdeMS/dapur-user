@@ -27,6 +27,8 @@ final class ConfigProvider
         $email = (new EmailConfigProvider())();
 
         return [
+            // Tabel modul ini dipasang oleh `php dapur pasang` (adems/dapur-database).
+            'dapur'        => ['skema' => [UserSkema::class]],
             'templates'    => [
                 'paths' => $email['templates']['paths'] + [
                     'user' => [dirname(__DIR__) . '/templates'],
