@@ -206,6 +206,48 @@ final class ProfilTigaTest extends TestCase
         self::assertSame([RiwayatAkun::UBAH_PROFIL, 'Tentang: pendidikan, lokasi, biografi'], [$riwayat['peristiwa'], $riwayat['keterangan']]);
     }
 
+    public function testStatus(): void
+    {
+        $kirim = fn (string $status): ResponseInterface => $this->handler(self::WEBSITE)
+            ->handle($this->permintaan('POST', self::WEBSITE, $this->ade, ['aksi' => 'status', 'status' => $status]));
+
+        self::assertSame(422, $kirim(str_repeat('a', 101))->getStatusCode());
+        self::assertSame('profil', $this->renderer->data['tab'], 'Galat membuka tab Profil.');
+        self::assertSame(str_repeat('a', 101), $this->renderer->data['statusAkun'], 'Isian yang gagal tetap tampil.');
+        self::assertSame(422, $kirim("Cuti\nsampai Senin")->getStatusCode(), 'Status satu baris saja.');
+
+        $hasil = $kirim('  Sedang cuti sampai Senin  ');
+        self::assertSame(302, $hasil->getStatusCode());
+        self::assertSame('/dashboard/pengaturan?tab=profil', $hasil->getHeaderLine('Location'));
+        self::assertSame(['status' => 'Sedang cuti sampai Senin'], $this->daftar->profil()->ambil($this->ade));
+        self::assertSame([], (new RiwayatAkun($this->db))->untukUser($this->ade), 'Status tidak dicatat di riwayat akun.');
+
+        // Tampil di tab Profil Pengaturan & Privasi dan di halaman Profil, juga untuk rekan.
+        $this->handler(self::WEBSITE)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['tab' => 'profil']));
+        self::assertSame('Sedang cuti sampai Senin', $this->renderer->data['statusAkun']);
+        $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->budi, ['id' => (string) $this->ade]));
+        self::assertSame('Sedang cuti sampai Senin', $this->renderer->data['profil']['status']);
+
+        // Ikut tampil di menu avatar (Identitas, sama di semua lingkup) dan di daftar user.
+        $ade = $this->daftar->cariId($this->ade);
+        assert($ade !== null);
+        self::assertSame('Sedang cuti sampai Senin', Identitas::untuk($ade, self::WEBSITE, $this->daftar, $this->pintu(self::WEBSITE))->status);
+        self::assertSame('Sedang cuti sampai Senin', Identitas::untuk($ade, 'dashboard', $this->daftar, $this->pintu('dashboard'))->status);
+        $pintu = $this->pintu(self::WEBSITE);
+        $this->daftar->ubahPeran($this->budi, self::WEBSITE, DaftarUser::PERAN_ADMIN_WEB);
+        (new KelolaUserHandler($this->daftar, new RiwayatAkun($this->db), new PenyajiDasar($this->renderer, $pintu), $pintu, new DateTimeZone('UTC')))
+            ->handle($this->permintaan('GET', self::WEBSITE, $this->budi));
+        $daftar = array_column($this->renderer->data['daftarUser'], null, 'id');
+        self::assertSame('Sedang cuti sampai Senin', $daftar[$this->ade]['status']);
+        self::assertSame('', $daftar[$this->budi]['status']);
+
+        // Isian Tentang tidak menghapus status, dan status kosong menghapusnya.
+        $this->handler(self::WEBSITE)->handle($this->permintaan('POST', self::WEBSITE, $this->ade, ['aksi' => 'tentang', 'pendidikan' => 'S1']));
+        self::assertSame('Sedang cuti sampai Senin', $this->daftar->profil()->ambil($this->ade)['status']);
+        $kirim('');
+        self::assertArrayNotHasKey('status', $this->daftar->profil()->ambil($this->ade));
+    }
+
     public function testLokasiDariSaranKota(): void
     {
         foreach ([
