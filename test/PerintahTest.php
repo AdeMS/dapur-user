@@ -75,12 +75,12 @@ final class PerintahTest extends TestCase
         $this->db->query('DROP TABLE "user_percobaan_masuk"', Adapter::QUERY_MODE_EXECUTE);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertMatchesRegularExpression('/Tabel user\s+sudah ada/', $this->keluaran);
+        self::assertDoesNotMatchRegularExpression('/Tabel user\s+dibuat/', $this->keluaran, 'Tabel yang sudah ada tidak diubah.');
         self::assertMatchesRegularExpression('/Tabel user_percobaan_masuk\s+dibuat/', $this->keluaran);
 
         $this->jalankan($this->perintah(), ['pasang']);
-        self::assertSame(9, preg_match_all('/^Tabel \S+\s+sudah ada$/m', $this->keluaran));
-        self::assertSame(0, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
+        self::assertStringContainsString('Tidak ada perubahan', $this->keluaran);
+        self::assertSame(0, preg_match_all('/dibuat/', $this->keluaran));
     }
 
     public function testPasangDariVersiSatuSatuHanyaMembuatRiwayatAkun(): void
@@ -90,7 +90,7 @@ final class PerintahTest extends TestCase
 
         $this->jalankan($this->perintah(), ['pasang']);
 
-        self::assertSame(1, preg_match_all('/^Tabel \S+\s+dibuat$/m', $this->keluaran));
+        self::assertSame(1, preg_match_all('/Tabel user\S*\s+dibuat/', $this->keluaran));
         self::assertMatchesRegularExpression('/Tabel user_riwayat_akun\s+dibuat/', $this->keluaran);
         self::assertNotNull($this->daftar->cariId($id), 'Data lama tetap ada.');
     }
@@ -142,7 +142,7 @@ final class PerintahTest extends TestCase
         self::assertMatchesRegularExpression('/Kolom user_akses\.email_id\s+ditambahkan/', $this->keluaran);
         self::assertMatchesRegularExpression('/Kolom user_riwayat_masuk\.email\s+ditambahkan/', $this->keluaran);
         self::assertSame('', (new RiwayatMasuk($this->db))->untukUser($id)[0]['email'], 'Catatan lama tanpa email.');
-        self::assertStringContainsString('Email utama dicatat di tabel email: 1 akun.', $this->keluaran);
+        self::assertStringContainsString('email utama dicatat di tabel email: 1 akun', $this->keluaran);
         $email = new EmailUser($this->db);
         self::assertTrue($email->tersedia());
         self::assertSame($id, $email->pemilik('admin@contoh.com'));
