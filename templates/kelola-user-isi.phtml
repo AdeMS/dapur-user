@@ -307,12 +307,12 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
                         <tr id="aktivitas-<?= (int) $i ?>">
                             <td class="text-nowrap small"><?= $this->escapeHtml($a['waktuSetempat']) ?></td>
                             <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaPeristiwa[$a['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($a['label']) ?></span></td>
-                            <td class="small"><?= $this->escapeHtml($a['sasaran']) ?></td>
+                            <td class="small"><?= $this->escapeHtml($a['sasaran']) ?><?= ($a['sasaranSaat'] ?? '') !== '' ? '<div class="text-body-secondary">sebagai ' . $this->escapeHtml($a['sasaranSaat']) . '</div>' : '' ?></td>
                             <td class="small"><?= $this->escapeHtml($a['keterangan']) ?></td>
 <?php if ($semua) : ?>
                             <td class="small"><code><?= $this->escapeHtml($a['lingkup']) ?></code></td>
 <?php endif ?>
-                            <td class="small text-nowrap"<?= $a['perangkat'] !== '' ? ' title="' . $this->escapeHtmlAttr($a['perangkatRingkas']) . '"' : '' ?>><?= $a['pelaku'] === null ? '<span class="text-body-secondary">terminal' . (($a['akunTerminal'] ?? null) !== null ? ' (' . $this->escapeHtml($a['akunTerminal']) . ')' : '') . '</span>' : $this->escapeHtml($a['pelaku']) ?></td>
+                            <td class="small text-nowrap"<?= $a['perangkat'] !== '' ? ' title="' . $this->escapeHtmlAttr($a['perangkatRingkas']) . '"' : '' ?>><?= $a['pelaku'] === null ? '<span class="text-body-secondary">terminal' . (($a['akunTerminal'] ?? null) !== null ? ' (' . $this->escapeHtml($a['akunTerminal']) . ')' : '') . '</span>' : $this->escapeHtml($a['pelaku']) ?><?= ($a['pelakuSaat'] ?? '') !== '' ? '<div class="text-body-secondary">sebagai ' . $this->escapeHtml($a['pelakuSaat']) . '</div>' : '' ?></td>
                         </tr>
 <?php endforeach ?>
                     </tbody>
