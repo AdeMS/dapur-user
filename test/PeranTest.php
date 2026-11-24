@@ -69,7 +69,7 @@ final class PeranTest extends TestCase
         (new Perintah($this->db, $this->daftar, static fn (): string => '', 'dashboard'))->jalankan(['pasang']);
         $keluaran = (string) ob_get_clean();
 
-        self::assertStringContainsString('Peran admin lama diperbarui: 2 akses', $keluaran);
+        self::assertStringContainsString('peran admin lama diperbarui: 2 akses', $keluaran);
         $mentah = $this->db->query('SELECT user_id, lingkup, peran FROM "user_akses" ORDER BY user_id, lingkup', Adapter::QUERY_MODE_EXECUTE)->toArray();
         self::assertSame(
             [['dashboard', 'admin_super'], ['blog.contoh.com', 'anggota'], ['toko.contoh.com', 'admin_web']],
@@ -78,7 +78,7 @@ final class PeranTest extends TestCase
 
         ob_start();
         (new Perintah($this->db, $this->daftar, static fn (): string => '', 'dashboard'))->jalankan(['pasang']);
-        self::assertStringNotContainsString('Peran admin lama', (string) ob_get_clean(), 'Aman diulang.');
+        self::assertStringNotContainsString('peran admin lama', (string) ob_get_clean(), 'Aman diulang.');
     }
 
     public function testAdminSuperTerakhirTidakBisaDicabutLewatTerminal(): void
