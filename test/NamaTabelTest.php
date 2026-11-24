@@ -88,6 +88,8 @@ final class NamaTabelTest extends TestCase
         ob_start();
         (new Perintah($db, $daftar, static fn (): string => '', 'dashboard', null, $tabel))->jalankan(['pasang']);
         $keluaran = (string) ob_get_clean();
-        self::assertSame(9, preg_match_all('/^Tabel xyz_\S+\s+sudah ada$/m', $keluaran));
+        // Tabel user sudah ada; yang dibuat hanya tabel catatan pasang, dengan awalan yang sama.
+        self::assertMatchesRegularExpression('/Tabel xyz_dapur_skema\s+dibuat/', $keluaran);
+        self::assertSame(0, preg_match_all('/Tabel xyz_user\S*\s+dibuat/', $keluaran));
     }
 }
