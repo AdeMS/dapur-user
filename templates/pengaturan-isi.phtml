@@ -21,7 +21,7 @@
  * @var string $alamatPengaturan
  * @var int $minimalSandi
  * @var string $zonaWaktu
- * @var list<array{waktu: string, peristiwa: string, label: string, keterangan: string, lingkup: string, user: string, oleh: string}> $aktivitas
+ * @var list<array{waktu: string, peristiwa: string, label: string, keterangan: string, lingkup: string, user: string, userSaat?: string, oleh: string, olehSaat?: string}> $aktivitas
  * @var list<array{waktu: string, peristiwa: string, label: string, lingkup: string, ip: string, perangkat: string, perangkatLengkap: string}> $riwayat
  * @var int|null $aktivitasLagi  jumlah untuk tombol "Tampilkan lebih banyak" di tab Aktivitas, null bila tidak ada lagi
  * @var int|null $riwayatLagi    sama, untuk tab Riwayat masuk
@@ -159,6 +159,8 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
     .user-foto-kamera-video.user-foto-cermin { transform: scaleX(-1); }
     /* Baris tujuan tombol "Tampilkan lebih banyak" tidak tertutup navbar */
     .user-pengaturan tbody tr { scroll-margin-top: 6rem; }
+    .user-tambah-email { max-width: 22rem; }
+    .user-tambah-email .dropdown-item, .user-tambah-email .dropdown-item-text { white-space: normal; }
 </style>
 <div class="container py-4 user-pengaturan">
     <div class="card mb-4">
@@ -245,58 +247,106 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
 <?php if ($galatDi('email_saya')) : ?>
                     <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
 <?php endif ?>
+<?php
+// Lebih dari 5 email: sisanya disembunyikan di balik tombol "Tampilkan ...". Email utama dan email website ini selalu
+// tampil, di mana pun urutannya.
+$emailTampil = 5;
+$emailLain   = 0;
+foreach ($daftarEmail as $i => $e) {
+    if ($i >= $emailTampil && ! $e['utama'] && $e['id'] !== $emailWebsiteId) {
+        $emailLain++;
+    }
+}
+$pilihWebsite = $this->bisaPilihEmailWebsite ?? false;
+?>
                     <ul class="list-group mb-2" aria-labelledby="pengaturan-label-email">
-<?php foreach ($daftarEmail as $e) : ?>
-                        <li class="list-group-item d-flex flex-wrap align-items-center gap-2">
+<?php foreach ($daftarEmail as $i => $e) : ?>
+<?php $sembunyi = $i >= $emailTampil && ! $e['utama'] && $e['id'] !== $emailWebsiteId ?>
+                        <li class="list-group-item d-flex flex-wrap align-items-center gap-2<?= $sembunyi ? ' collapse user-email-lain' : '' ?>">
                             <span class="me-auto text-break"><?= $this->escapeHtml($e['email']) ?></span>
+                            <?php /* Lencana dan tombol satu kelompok: bila tidak muat di samping email, turun bersama dan rata kanan. */ ?>
+                            <div class="d-flex flex-nowrap align-items-center gap-2 ms-auto">
 <?php if ($e['utama']) : ?>
                             <span class="badge text-bg-success">Utama</span>
 <?php endif ?>
-<?php if (($this->bisaPilihEmailWebsite ?? false) && $e['id'] === $emailWebsiteId) : ?>
-                            <span class="badge text-bg-info">Website ini</span>
+<?php if ($pilihWebsite && $e['id'] === $emailWebsiteId) : ?>
+                            <span class="badge text-bg-info" title="Email yang dilihat rekan di website ini dan dipakai untuk email dari website ini">Website ini</span>
+<?php endif ?>
+<?php if ($pilihWebsite && $e['id'] !== $emailWebsiteId && ($e['bisaDipilih'] ?? true)) : ?>
+                            <form method="post" action="<?= $aksi ?>">
+                                <?= $csrf ?>
+                                <input type="hidden" name="aksi" value="email_website">
+                                <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-info" title="Pakai di website ini" aria-label="Pakai <?= $this->escapeHtmlAttr($e['email']) ?> di website ini"><i class="bi bi-globe2" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Pakai di website ini</span></button>
+                            </form>
 <?php endif ?>
 <?php if ($e['utama'] && $bisaEmail) : ?>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-email">Ubah</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-email" title="Ubah email utama" aria-label="Ubah email utama"><i class="bi bi-pencil" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Ubah</span></button>
 <?php endif ?>
 <?php if (! $e['utama']) : ?>
                             <form method="post" action="<?= $aksi ?>">
                                 <?= $csrf ?>
                                 <input type="hidden" name="aksi" value="utama_email">
                                 <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">Jadikan utama</button>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Jadikan utama" aria-label="Jadikan <?= $this->escapeHtmlAttr($e['email']) ?> email utama"><i class="bi bi-star" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Jadikan utama</span></button>
                             </form>
                             <form method="post" action="<?= $aksi ?>" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode('Hapus ' . $e['email'] . ' dari akun Anda?')) ?>)">
                                 <?= $csrf ?>
                                 <input type="hidden" name="aksi" value="hapus_email">
                                 <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">Hapus</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus" aria-label="Hapus <?= $this->escapeHtmlAttr($e['email']) ?>"><i class="bi bi-trash" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Hapus</span></button>
                             </form>
 <?php endif ?>
+                            </div>
                         </li>
 <?php endforeach ?>
                     </ul>
+<?php if ($emailLain > 0) : ?>
+                    <button type="button" class="btn btn-sm btn-link px-0 mb-2 d-block" data-bs-toggle="collapse" data-bs-target=".user-email-lain" aria-expanded="false" id="pengaturan-email-lain"
+                        data-teks-buka="Tampilkan <?= $emailLain ?> email lainnya" data-teks-tutup="Sembunyikan <?= $emailLain ?> email lainnya"><i class="bi bi-chevron-down me-1" aria-hidden="true"></i><span>Tampilkan <?= $emailLain ?> email lainnya</span></button>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', () => {
+                            const tombol = document.getElementById('pengaturan-email-lain');
+                            const baris = document.querySelector('.user-email-lain');
+                            const ubah = (buka) => {
+                                tombol.querySelector('span').textContent = tombol.dataset[buka ? 'teksTutup' : 'teksBuka'];
+                                tombol.querySelector('.bi').className = 'bi me-1 ' + (buka ? 'bi-chevron-up' : 'bi-chevron-down');
+                            };
+                            baris?.addEventListener('shown.bs.collapse', () => ubah(true));
+                            baris?.addEventListener('hidden.bs.collapse', () => ubah(false));
+                        });
+                    </script>
+<?php endif ?>
+<?php
+// "Tambah email": email baru (dikonfirmasi lewat tautan) atau menggabungkan akun lain milik user ini.
+$bisaGabung   = $gabungAkun !== null && $gabungAkun['tersedia'];
+$gabungTampil = $gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun['adminSuper']);
+?>
+<?php if ($galatDi('gabung') && ! $bisaGabung) : ?>
+                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
+<?php endif ?>
+<?php if ($bisaEmail || $gabungTampil) : ?>
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Tambah email</button>
+                        <ul class="dropdown-menu user-tambah-email">
 <?php if ($bisaEmail) : ?>
-                    <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-tambah-email"><i class="bi bi-plus-lg me-1"></i>Tambah email</button>
+                            <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-tambah-email">
+                                <i class="bi bi-envelope-plus me-2" aria-hidden="true"></i>Tambah email baru
+                                <span class="d-block small text-body-secondary ms-4">Dikonfirmasi lewat tautan yang dikirim ke email itu.</span></button></li>
 <?php endif ?>
-                    <p class="form-text mb-0 mt-2">Semua email di atas bisa dipakai untuk masuk ke akun yang sama.</p>
-<?php if ($this->bisaPilihEmailWebsite ?? false) : ?>
-                    <form method="post" action="<?= $aksi ?>" class="mt-3">
-                        <?= $csrf ?>
-                        <input type="hidden" name="aksi" value="email_website">
-                        <label class="form-label user-pengaturan-label" for="pengaturan-email-website">Email untuk website ini</label>
-                        <div class="d-flex gap-2">
-                            <select class="form-select" id="pengaturan-email-website" name="email_id" aria-describedby="pengaturan-email-website-ket">
-<?php foreach ($daftarEmail as $e) : ?>
-<?php if ($e['bisaDipilih'] ?? true) : ?>
-                                <option value="<?= (int) $e['id'] ?>"<?= $e['id'] === $emailWebsiteId ? ' selected' : '' ?>><?= $this->escapeHtml($e['email']) ?></option>
+<?php if ($bisaGabung) : ?>
+                            <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-gabung-akun">
+                                <i class="bi bi-people me-2" aria-hidden="true"></i>Gabungkan dengan akun lain
+                                <span class="d-block small text-body-secondary ms-4">Punya akun lain di sini dengan email berbeda? Emailnya pindah ke akun ini.</span></button></li>
+<?php elseif ($gabungTampil) : ?>
+                            <li><span class="dropdown-item-text">
+                                <i class="bi bi-people me-2 text-body-secondary" aria-hidden="true"></i><span class="text-body-secondary">Gabungkan dengan akun lain</span>
+                                <span class="d-block small text-body-secondary ms-4">Akun admin super hanya bisa digabungkan oleh admin server lewat terminal (<code>vendor/bin/dapur-user gabung-akun</code>).</span></span></li>
 <?php endif ?>
-<?php endforeach ?>
-                            </select>
-                            <button type="submit" class="btn btn-outline-success">Simpan</button>
-                        </div>
-                        <div class="form-text" id="pengaturan-email-website-ket">Email yang dilihat rekan di website ini dan dipakai untuk email dari website ini.<?php if (($this->domainEmail ?? '') !== '') : ?> Website ini hanya menerima email <?= $this->escapeHtml($this->domainEmail) ?>.<?php endif ?></div>
-                    </form>
+                        </ul>
+                    </div>
 <?php endif ?>
+                    <p class="form-text mb-0 mt-2">Semua email di atas bisa dipakai untuk masuk ke akun yang sama.<?php if ($pilihWebsite) : ?> <span class="badge text-bg-info">Website ini</span> = email yang dilihat rekan di website ini dan dipakai untuk email dari website ini.<?php if (($this->domainEmail ?? '') !== '') : ?> Website ini hanya menerima email <?= $this->escapeHtml($this->domainEmail) ?>.<?php endif ?><?php endif ?></p>
                 </div>
 <?php endif ?>
                 <div class="mb-4">
@@ -308,21 +358,6 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                     <button type="reset" form="pengaturan-form-nama" class="btn btn-outline-secondary">Batal</button>
                     <button type="submit" form="pengaturan-form-nama" class="btn btn-success">Simpan</button>
                 </div>
-<?php if ($gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun['adminSuper'])) : ?>
-                <hr class="my-4">
-                <section aria-labelledby="pengaturan-judul-gabung">
-                    <h3 class="h6" id="pengaturan-judul-gabung">Gabungkan akun</h3>
-<?php if ($galatDi('gabung') && ! $gabungAkun['tersedia']) : ?>
-                    <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
-<?php endif ?>
-<?php if ($gabungAkun['tersedia']) : ?>
-                    <p class="small text-body-secondary col-lg-10 col-xl-8">Punya akun lain di sini dengan email berbeda, misalnya email kantor? Gabungkan ke akun ini: email itu menjadi email tambahan akun ini dan akses websitenya ikut pindah. Nama, kata sandi, dan foto akun ini tetap.</p>
-                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pengaturan-popup-gabung-akun"><i class="bi bi-people me-1" aria-hidden="true"></i>Gabungkan dengan akun lain</button>
-<?php else : ?>
-                    <p class="small text-body-secondary mb-0">Akun admin super hanya bisa digabungkan oleh admin server lewat terminal (<code>vendor/bin/dapur-user gabung-akun</code>).</p>
-<?php endif ?>
-                </section>
-<?php endif ?>
             </div>
 <?php if ($profilSiap) : ?>
             <div class="tab-pane fade<?= $tab === 'profil' ? ' show active' : '' ?>" id="pengaturan-profil" role="tabpanel" aria-labelledby="pengaturan-tab-profil" tabindex="0">
@@ -336,8 +371,11 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                 <div class="d-flex flex-wrap align-items-center gap-3">
 <?php if ($fotoSiap) : ?>
                     <?= $pemilihFoto('akun', $this->fotoAkun ?? null, ($this->fotoAkun ?? null) !== null) ?>
-                    <div class="form-text mb-0">Klik foto untuk melihat, mengambil dari kamera, mengunggah, atau menghapusnya.<br>
+                    <div class="form-text mb-0">
+<?php if (($this->fotoAkun ?? null) === null) : ?>
+                        Klik foto untuk mengambil dari kamera atau mengunggahnya.<br>
                         JPG, PNG, atau WebP, paling besar 2 MB. Foto dipotong persegi.
+<?php endif ?>
                         <span class="d-block text-danger user-foto-galat" data-untuk="pengaturan-foto-akun" role="alert"></span></div>
 <?php else : ?>
                     <?= $this->partial('user::avatar', ['foto' => $this->fotoAkun ?? null, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']) ?>
@@ -431,10 +469,10 @@ $csrf = '<input type="hidden" name="' . $this->escapeHtmlAttr($this->fieldCsrf) 
                             <tr id="aktivitas-<?= (int) $i ?>">
                                 <td class="text-nowrap"><?= $this->escapeHtml($a['waktu']) ?></td>
                                 <td><span class="badge text-bg-<?= $this->escapeHtmlAttr($warnaAkun[$a['peristiwa']] ?? 'light') ?>"><?= $this->escapeHtml($a['label']) ?></span></td>
-                                <td><?= $this->escapeHtml($a['user'] ?? 'Anda') ?></td>
+                                <td><?= $this->escapeHtml($a['user'] ?? 'Anda') ?><?= ($a['userSaat'] ?? '') !== '' ? '<div class="small text-body-secondary">sebagai ' . $this->escapeHtml($a['userSaat']) . '</div>' : '' ?></td>
                                 <td><?= $this->escapeHtml($a['keterangan']) ?></td>
                                 <td class="text-nowrap"><?= $this->escapeHtml($a['lingkup']) ?></td>
-                                <td class="text-nowrap"><?= $this->escapeHtml($a['oleh']) ?></td>
+                                <td class="text-nowrap"><?= $this->escapeHtml($a['oleh']) ?><?= ($a['olehSaat'] ?? '') !== '' ? '<div class="small text-body-secondary">sebagai ' . $this->escapeHtml($a['olehSaat']) . '</div>' : '' ?></td>
                             </tr>
 <?php endforeach ?>
                         </tbody>
