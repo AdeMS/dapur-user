@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace AdeMS\Dapur\User;
 
+use AdeMS\Dapur\Database\KonteksSkema;
+use AdeMS\Dapur\Database\Pemasang;
+use AdeMS\Dapur\Database\Perintah as PerintahPasang;
 use Closure;
 use Laminas\Db\Adapter\Adapter;
-use Laminas\Db\Metadata\Source\Factory;
 
 /**
  * Perintah baris: pasang, buat-admin, ganti-sandi, riwayat, daftar-akses, cabut-akses, riwayat-akun, daftar-email,
@@ -59,56 +61,19 @@ final class Perintah
     }
 
     /**
-     * Membuat tabel yang belum ada, lalu mengubah peran 'admin' dari versi 1.x menjadi admin super (lingkup
-     * utama) atau admin web (website). Tabel yang sudah ada tidak diubah, jadi aman diulang.
+     * Membuat tabel dan kolom user yang belum ada, lalu menjalankan langkah data yang belum pernah dijalankan (mis.
+     * peran 'admin' dari 1.x). Sejak 2.5 dikerjakan oleh adems/dapur-database; `php dapur pasang` di inti memasang
+     * tabel semua modul sekaligus. Perintah ini tetap ada sebagai jalan pintas untuk modul user saja, tanpa bertanya.
      */
     private function pasang(): int
     {
-        $platform = $this->db->getPlatform();
-        $metadata = Factory::createSourceFromAdapter($this->db);
-        $ada      = $metadata->getTableNames();
-
-        foreach (Skema::tabel($platform->getName(), $this->tabel) as $tabel => $sql) {
-            if (in_array($tabel, $ada, true)) {
-                printf("Tabel %-36s sudah ada%s", $tabel, PHP_EOL);
-                continue;
-            }
-
-            $this->db->query($sql, Adapter::QUERY_MODE_EXECUTE);
-            printf("Tabel %-36s dibuat%s", $tabel, PHP_EOL);
+        $pemasang = new Pemasang(new KonteksSkema($this->db, $this->tabel->awalan), [new UserSkema()]);
+        $kode     = (new PerintahPasang($pemasang))->jalankan([UserSkema::NAMA, '--ya']);
+        if ($kode === PerintahPasang::KELUAR_SIAP) {
+            echo PHP_EOL . 'Tabel user sudah siap; data yang sudah ada tidak diubah. Untuk semua modul sekaligus: php dapur pasang' . PHP_EOL;
         }
 
-        // Kolom yang datang di versi sesudah tabelnya dibuat; ditambahkan tanpa menyentuh data yang ada.
-        $metadata = Factory::createSourceFromAdapter($this->db);
-        foreach (Skema::kolom($platform->getName(), $this->tabel) as $tabel => $daftarKolom) {
-            $kolomAda = $metadata->getColumnNames($tabel);
-            foreach ($daftarKolom as $kolom => $definisi) {
-                if (in_array($kolom, $kolomAda, true)) {
-                    continue;
-                }
-
-                $this->db->query(
-                    'ALTER TABLE ' . $platform->quoteIdentifier($tabel) . ' ADD COLUMN '
-                    . $platform->quoteIdentifier($kolom) . ' ' . $definisi,
-                    Adapter::QUERY_MODE_EXECUTE,
-                );
-                printf("Kolom %-36s ditambahkan%s", $tabel . '.' . $kolom, PHP_EOL);
-            }
-        }
-
-        $disalin = (new EmailUser($this->db, $this->tabel))->salinEmailUtama();
-        if ($disalin > 0) {
-            printf('%sEmail utama dicatat di tabel email: %d akun.%s', PHP_EOL, $disalin, PHP_EOL);
-        }
-
-        $diubah = $this->user->perbaruiPeranLama();
-        if ($diubah > 0) {
-            printf('%sPeran admin lama diperbarui: %d akses (admin super di dashboard utama, admin web di website).%s', PHP_EOL, $diubah, PHP_EOL);
-        }
-
-        echo PHP_EOL . 'Tabel user sudah siap; data yang sudah ada tidak diubah.' . PHP_EOL;
-
-        return 0;
+        return $kode;
     }
 
     private function buatAdmin(string $email, ?string $nama): int
