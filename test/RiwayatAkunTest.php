@@ -72,4 +72,47 @@ final class RiwayatAkunTest extends TestCase
         self::assertSame('Nonaktifkan', RiwayatAkun::label(RiwayatAkun::NONAKTIFKAN));
         self::assertSame('lain', RiwayatAkun::label('lain'));
     }
+
+    public function testEmailSaatKejadianTetapSesudahEmailBerganti(): void
+    {
+        $a = $this->daftar->buat('lama@contoh.com', 'A', 'kata-sandi-panjang');
+        $this->riwayat->catat(RiwayatAkun::UBAH_NAMA, $a, $a, 'dashboard', 'A -> A2');
+        $this->daftar->gantiEmail($a, 'baru@contoh.com');
+
+        $baris = $this->riwayat->aktivitasUser($a)[0];
+        self::assertSame('baru@contoh.com', $baris['pelaku'], 'Identitas sekarang tetap dipakai sebagai nama utama.');
+        self::assertSame('lama@contoh.com', $baris['pelakuSaat']);
+        self::assertSame('lama@contoh.com', $baris['sasaranSaat']);
+
+        // Catatan baru dengan email yang sama dengan sekarang tidak diberi keterangan.
+        $this->riwayat->catat(RiwayatAkun::UBAH_NAMA, $a, $a, 'dashboard', 'A2 -> A3');
+        self::assertSame('', $this->riwayat->aktivitasUser($a)[0]['pelakuSaat']);
+    }
+
+    public function testEmailSaatKejadianTidakTampilDiDaftarWebsite(): void
+    {
+        $a = $this->daftar->buat('lama@contoh.com', 'A', 'kata-sandi-panjang');
+        $this->daftar->tambahAkses($a, 'toko.test', DaftarUser::PERAN_ADMIN_WEB);
+        $this->riwayat->catat(RiwayatAkun::UBAH_NAMA, $a, $a, 'toko.test');
+        $this->daftar->gantiEmail($a, 'baru@contoh.com');
+
+        $baris = $this->riwayat->untukLingkup('toko.test')[0];
+        self::assertSame('', $baris['pelakuSaat']);
+        self::assertSame('', $baris['sasaranSaat']);
+        self::assertSame('lama@contoh.com', $this->riwayat->semua()[0]['pelakuSaat'], 'Admin super di dashboard utama melihatnya.');
+    }
+
+    public function testTanpaKolomBaruTetapBerjalan(): void
+    {
+        // Susunan sebelum 2.5: tanpa kolom pelaku_email dan sasaran_email.
+        $this->db->query('ALTER TABLE "user_riwayat_akun" DROP COLUMN "pelaku_email"', Adapter::QUERY_MODE_EXECUTE);
+        $this->db->query('ALTER TABLE "user_riwayat_akun" DROP COLUMN "sasaran_email"', Adapter::QUERY_MODE_EXECUTE);
+        $riwayat = new RiwayatAkun($this->db);
+        $a       = $this->daftar->buat('a@contoh.com', 'A', 'kata-sandi-panjang');
+
+        self::assertFalse($riwayat->adaIdentitas());
+        $riwayat->catat(RiwayatAkun::UBAH_NAMA, $a, $a, 'dashboard');
+        $riwayat->tandaiAsal($a, 'a@contoh.com');
+        self::assertSame('', $riwayat->aktivitasUser($a)[0]['pelakuSaat']);
+    }
 }
