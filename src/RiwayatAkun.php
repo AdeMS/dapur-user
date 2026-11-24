@@ -67,6 +67,9 @@ final class RiwayatAkun
     private readonly string $tEmail;
     private readonly EmailUser $email;
 
+    /** Apakah kolom pelaku_email dan sasaran_email sudah ada (2.5); diperiksa sekali per objek. */
+    private ?bool $adaIdentitas = null;
+
     public function __construct(
         private readonly Adapter $db,
         NamaTabel $tabel = new NamaTabel(),
@@ -92,26 +95,54 @@ final class RiwayatAkun
         string $ip = '',
         string $perangkat = '',
     ): void {
+        $nilai = [
+            $pelakuId,
+            $sasaranId,
+            $lingkup,
+            $peristiwa,
+            self::potong($keterangan),
+            substr($ip, 0, 45),
+            self::potong($perangkat),
+            gmdate('Y-m-d H:i:s'),
+        ];
+
+        if (! $this->adaIdentitas()) {
+            $this->db->query(
+                "INSERT INTO {$this->tabel} (pelaku_id, sasaran_id, lingkup, peristiwa, keterangan, ip, perangkat, waktu)"
+                . ' VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                $nilai,
+            );
+
+            return;
+        }
+
+        // Email pelaku dan sasaran saat ini ikut disimpan, karena akun bisa berganti email atau digabung ke akun lain;
+        // tanpa ini, catatan lama akan tampil dengan identitas akun yang sekarang.
         $this->db->query(
-            "INSERT INTO {$this->tabel} (pelaku_id, sasaran_id, lingkup, peristiwa, keterangan, ip, perangkat, waktu)"
-            . ' VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                $pelakuId,
-                $sasaranId,
-                $lingkup,
-                $peristiwa,
-                self::potong($keterangan),
-                substr($ip, 0, 45),
-                self::potong($perangkat),
-                gmdate('Y-m-d H:i:s'),
-            ],
+            "INSERT INTO {$this->tabel} (pelaku_id, sasaran_id, lingkup, peristiwa, keterangan, ip, perangkat, waktu,"
+            . ' pelaku_email, sasaran_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [...$nilai, $this->identitas($pelakuId, $lingkup), $this->identitas($sasaranId, $lingkup)],
         );
+    }
+
+    /**
+     * Mengisi email saat kejadian pada catatan lama milik satu akun yang belum punya (sebelum 2.5). Dipakai saat akun
+     * itu digabung ke akun lain, agar catatannya tetap menunjukkan akun asalnya sesudah dipindah.
+     */
+    public function tandaiAsal(int $userId, string $email): void
+    {
+        if (! $this->adaIdentitas()) {
+            return;
+        }
+
+        $this->db->query("UPDATE {$this->tabel} SET pelaku_email = ? WHERE pelaku_id = ? AND pelaku_email = ''", [$email, $userId]);
+        $this->db->query("UPDATE {$this->tabel} SET sasaran_email = ? WHERE sasaran_id = ? AND sasaran_email = ''", [$email, $userId]);
     }
 
     /**
      * Perubahan pada akun satu user, terbaru lebih dulu. Waktu dalam UTC.
      *
-     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string, pelakuSaat: string, sasaranSaat: string}>
      */
     public function untukUser(int $sasaranId, int $jumlah = 20): array
     {
@@ -122,7 +153,7 @@ final class RiwayatAkun
      * Aktivitas akun seorang user, terbaru lebih dulu: perubahan pada akunnya dan perubahan yang ia lakukan pada
      * akun lain. Waktu dalam UTC.
      *
-     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string, pelakuSaat: string, sasaranSaat: string}>
      */
     public function aktivitasUser(int $userId, int $jumlah = 20): array
     {
@@ -132,7 +163,7 @@ final class RiwayatAkun
     /**
      * Perubahan yang dilakukan di satu lingkup, terbaru lebih dulu. Waktu dalam UTC.
      *
-     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string, pelakuSaat: string, sasaranSaat: string}>
      */
     public function untukLingkup(string $lingkup, int $jumlah = 20): array
     {
@@ -143,7 +174,7 @@ final class RiwayatAkun
      * Riwayat semua lingkup (dashboard utama, untuk admin super), terbaru dahulu; bisa disaring satu lingkup. Pelaku dan
      * sasaran ditampilkan dengan email utama, karena admin super melihat semua akun.
      *
-     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string, pelakuSaat: string, sasaranSaat: string}>
      */
     public function semua(int $jumlah = 20, ?string $lingkup = null): array
     {
@@ -179,6 +210,38 @@ final class RiwayatAkun
         }
     }
 
+    /** Apakah kolom email saat kejadian sudah dibuat (`pasang` 2.5). */
+    public function adaIdentitas(): bool
+    {
+        if ($this->adaIdentitas === null) {
+            try {
+                $this->db->query("SELECT pelaku_email, sasaran_email FROM {$this->tabel} WHERE 1 = 0", Adapter::QUERY_MODE_EXECUTE);
+                $this->adaIdentitas = true;
+            } catch (\Throwable) {
+                $this->adaIdentitas = false;
+            }
+        }
+
+        return $this->adaIdentitas;
+    }
+
+    /** Email yang dipakai akun di lingkup itu saat ini ('' untuk terminal atau akun yang tidak ditemukan). */
+    private function identitas(?int $userId, string $lingkup): string
+    {
+        if ($userId === null) {
+            return '';
+        }
+
+        if ($this->email->tersedia()) {
+            return $this->email->emailLingkup($userId, $lingkup);
+        }
+
+        $hasil = $this->db->query("SELECT email FROM {$this->tUser} WHERE id = ?", [$userId]);
+        $baris = $hasil instanceof ResultSetInterface ? $hasil->toArray() : [];
+
+        return (string) ($baris[0]['email'] ?? '');
+    }
+
     public static function label(string $peristiwa): string
     {
         return self::LABEL[$peristiwa] ?? $peristiwa;
@@ -186,7 +249,7 @@ final class RiwayatAkun
 
     /**
      * @param list<mixed> $parameter
-     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string}>
+     * @return list<array{peristiwa: string, lingkup: string, keterangan: string, ip: string, perangkat: string, waktu: string, pelaku: ?string, sasaran: string, pelakuSaat: string, sasaranSaat: string}>
      */
     private function baca(string $syarat, array $parameter, int $jumlah, bool $perLingkup = false): array
     {
@@ -206,6 +269,11 @@ final class RiwayatAkun
                 . " LEFT JOIN {$this->tAkses} aks ON aks.user_id = r.sasaran_id AND aks.lingkup = r.lingkup"
                 . " LEFT JOIN {$this->tEmail} es ON es.id = aks.email_id AND es.user_id = r.sasaran_id"
             : '';
+
+        // Email saat kejadian hanya untuk tampilan tanpa lingkup (milik sendiri, atau admin super di dashboard utama):
+        // di daftar website, email pribadi tidak boleh terlihat oleh rekan.
+        $identitas = ! $perLingkup && $this->adaIdentitas();
+        $tambahan .= $identitas ? ', r.pelaku_email AS pelaku_saat, r.sasaran_email AS sasaran_saat' : '';
 
         $hasil  = $this->db->query(
             "SELECT r.peristiwa, r.lingkup, r.keterangan, r.ip, r.perangkat, r.waktu, p.email AS pelaku, s.email AS sasaran{$tambahan}"
@@ -236,10 +304,20 @@ final class RiwayatAkun
                 'waktu'      => (string) $b['waktu'],
                 'pelaku'     => $b['pelaku'] === null ? null : (string) $b['pelaku'],
                 'sasaran'    => (string) $b['sasaran'],
+                // Email saat kejadian, hanya bila berbeda dari email yang ditampilkan sekarang; '' bila sama/tidak ada.
+                'pelakuSaat'  => self::bedaDari($b['pelaku_saat'] ?? '', $b['pelaku']),
+                'sasaranSaat' => self::bedaDari($b['sasaran_saat'] ?? '', $b['sasaran']),
             ];
         }
 
         return $baris;
+    }
+
+    private static function bedaDari(mixed $saat, mixed $sekarang): string
+    {
+        $saat = (string) $saat;
+
+        return $saat === '' || strcasecmp($saat, (string) $sekarang) === 0 ? '' : $saat;
     }
 
     /** Teks bebas (keterangan, user agent) disimpan sebagai UTF-8 tanpa karakter kendali, paling panjang 255 byte. */
