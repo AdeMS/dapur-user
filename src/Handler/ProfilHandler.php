@@ -77,14 +77,14 @@ final class ProfilHandler implements RequestHandlerInterface
     public const TAB_PENGATURAN = ['akun', 'profil', 'aktivitas', 'riwayat'];
 
     /** Bagian form yang ada di tab Profil (lainnya di tab Akun Saya). */
-    private const BAGIAN_PROFIL = ['foto', 'tentang', 'profil_website'];
+    private const BAGIAN_PROFIL = ['foto', 'status', 'tentang', 'profil_website'];
 
     /** Aksi form yang diterima tiap halaman. Halaman Profil hanya untuk dibaca. */
     private const AKSI = [
         self::HALAMAN_PROFIL     => [],
         self::HALAMAN_PENGATURAN => [
             'nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website',
-            'foto', 'hapus_foto', 'tentang', 'nama_website', 'gabung_akun',
+            'foto', 'hapus_foto', 'status', 'tentang', 'nama_website', 'gabung_akun',
         ],
     ];
 
@@ -187,6 +187,7 @@ final class ProfilHandler implements RequestHandlerInterface
             'email_website' => $this->pilihEmailWebsite($request, $user, $sesi, $isi),
             'foto'          => $this->gantiFoto($request, $user, $sesi, $isi),
             'hapus_foto'    => $this->hapusFoto($request, $user, $sesi, $isi),
+            'status'        => $this->simpanStatus($request, $user, $sesi, $isi),
             'tentang'       => $this->simpanTentang($request, $user, $sesi, $isi),
             'nama_website'  => $this->simpanNamaWebsite($request, $user, $sesi, $isi),
             'gabung_akun'   => $this->gabungAkun($request, $user, $sesi, $isi),
@@ -609,6 +610,30 @@ final class ProfilHandler implements RequestHandlerInterface
     }
 
     /**
+     * Status singkat yang diketik bebas, satu baris; kosong berarti status dihapus. Tidak dicatat di riwayat akun, karena
+     * status bisa sering berganti.
+     *
+     * @param array<mixed> $isi
+     */
+    private function simpanStatus(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $teks = is_string($isi[ProfilUser::STATUS] ?? null) ? trim($isi[ProfilUser::STATUS]) : '';
+        if (mb_strlen($teks, 'UTF-8') > ProfilUser::PANJANG_STATUS_MAKS || preg_match('/[\x00-\x1f\x7f]/u', $teks) !== 0) {
+            return $this->galat($request, $user, 'status', sprintf('Status paling panjang %d karakter, satu baris.', ProfilUser::PANJANG_STATUS_MAKS), 422, ['statusAkun' => $teks]);
+        }
+
+        $belum = $this->belumSiapProfil($request, $user, 'status', false, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        $this->daftar->profil()->simpan($user->id, '', [ProfilUser::STATUS => $teks]);
+        $sesi->simpan(self::SESI_PESAN, $teks === '' ? 'Status sudah dihapus.' : 'Status sudah disimpan.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
      * Bagian Tentang (pendidikan, lokasi, keahlian, biografi), dilihat rekan di website yang sama.
      *
      * @param array<mixed> $isi
@@ -803,6 +828,7 @@ final class ProfilHandler implements RequestHandlerInterface
             'peran'   => $peran,
             'aktif'   => $target->aktif,
             'tentang' => $tentang,
+            'status'  => $isi[ProfilUser::STATUS] ?? '',
             'diri'    => $diri,
         ];
     }
@@ -818,6 +844,7 @@ final class ProfilHandler implements RequestHandlerInterface
         $tersedia = $profil->tersedia();
         $lingkup  = $this->pintu->lingkup;
         $website  = $tersedia && $lingkup !== Konteks::LINGKUP_UTAMA ? $profil->ambil($user->id, $lingkup) : null;
+        $isiAkun  = $tersedia ? $profil->ambil($user->id) : [];
 
         return [
             'profilTersedia' => $tersedia,
@@ -827,7 +854,8 @@ final class ProfilHandler implements RequestHandlerInterface
             'namaDepan'      => $user->namaDepan,
             'namaTengah'     => $user->namaTengah,
             'namaBelakang'   => $user->namaBelakang,
-            'tentang'        => $tersedia ? $profil->ambil($user->id) : [],
+            'tentang'        => $isiAkun,
+            'statusAkun'     => $isiAkun[ProfilUser::STATUS] ?? '',
             'alamatLokasi'   => $tersedia && $this->lokasiSiap() ? $this->pintu->alamatLokasi() : null,
             'isianTentang'   => array_map(static fn (array $d): array => ['label' => $d[0], 'maks' => $d[1]], ProfilUser::TENTANG),
             'profilWebsite'  => $website === null ? null : [
