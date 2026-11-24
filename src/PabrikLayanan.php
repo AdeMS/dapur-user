@@ -268,9 +268,7 @@ final class PabrikLayanan
     /** @return array<string, mixed> */
     private static function config(ContainerInterface $c): array
     {
-        $config = $c->get('config')['user'] ?? [];
-
-        return is_array($config) ? $config : [];
+        return Pengaturan::configUser($c->get('config'));
     }
 
     private static function tabel(ContainerInterface $c): NamaTabel
