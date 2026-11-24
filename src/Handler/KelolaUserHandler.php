@@ -702,7 +702,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $fotoAkun = $profil->fotoAkun();
         $namaWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::NAMA) : [];
         $fotoWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::FOTO) : [];
-        $tampil   = function (int $id, string $nama, string $email) use ($fotoAkun, $namaWeb, $fotoWeb): array {
+        $statusUser = $profil->untukLingkup('', ProfilUser::STATUS);
+        $tampil   = function (int $id, string $nama, string $email) use ($fotoAkun, $namaWeb, $fotoWeb, $statusUser): array {
             $nama = $namaWeb[$id] ?? $nama;
             $foto = $fotoWeb[$id] ?? $fotoAkun[$id] ?? '';
 
@@ -710,6 +711,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 'namaTampil' => $nama,
                 'foto'       => $foto === '' ? null : $this->pintu->alamatFoto($foto),
                 'inisial'    => User::inisialDari($nama, $email),
+                'status'     => $statusUser[$id] ?? '',
             ];
         };
 
