@@ -1084,11 +1084,15 @@ final class ProfilHandler implements RequestHandlerInterface
                 'keterangan' => $b['keterangan'],
                 'lingkup'    => $b['lingkup'],
                 'user'       => $b['sasaran'] === $user->email ? 'Anda' : $b['sasaran'],
+                // Email saat kejadian bila berbeda dari sekarang (mis. dari akun yang sudah digabung ke akun ini).
+                'userSaat'   => $b['sasaranSaat'] ?? '',
                 'oleh'       => match (true) {
                     $b['pelaku'] === null        => Perangkat::dariTerminal($b['perangkat']) ? Perangkat::ringkas($b['perangkat']) : 'Terminal',
                     $b['pelaku'] === $user->email => 'Anda',
                     default                      => 'Admin',
                 },
+                // Hanya untuk pelaku "Anda": email admin lain tidak ditampilkan.
+                'olehSaat'   => $b['pelaku'] === $user->email ? ($b['pelakuSaat'] ?? '') : '',
             ];
         }
 
