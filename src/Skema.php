@@ -53,6 +53,11 @@ final class Skema
                     'nama_belakang' => "VARCHAR(100) NOT NULL DEFAULT ''",
                     'foto'          => "VARCHAR(64) NOT NULL DEFAULT ''",
                 ],
+                // 2.5: email pelaku dan sasaran saat kejadian, agar tetap benar sesudah email berganti atau akun digabung.
+                $tabel->riwayatAkun() => [
+                    'pelaku_email'  => "VARCHAR(190) NOT NULL DEFAULT ''",
+                    'sasaran_email' => "VARCHAR(190) NOT NULL DEFAULT ''",
+                ],
             ],
             'SQLite' => [
                 $tabel->akses()   => ['email_id' => 'INTEGER NULL'],
@@ -62,6 +67,10 @@ final class Skema
                     'nama_tengah'   => "TEXT NOT NULL DEFAULT ''",
                     'nama_belakang' => "TEXT NOT NULL DEFAULT ''",
                     'foto'          => "TEXT NOT NULL DEFAULT ''",
+                ],
+                $tabel->riwayatAkun() => [
+                    'pelaku_email'  => "TEXT NOT NULL DEFAULT ''",
+                    'sasaran_email' => "TEXT NOT NULL DEFAULT ''",
                 ],
             ],
             default  => throw new RuntimeException("Modul user belum mendukung database {$platform}."),
@@ -131,6 +140,8 @@ final class Skema
                 keterangan VARCHAR(255) NOT NULL DEFAULT '',
                 ip VARCHAR(45) NOT NULL DEFAULT '',
                 perangkat VARCHAR(255) NOT NULL DEFAULT '',
+                pelaku_email VARCHAR(190) NOT NULL DEFAULT '',
+                sasaran_email VARCHAR(190) NOT NULL DEFAULT '',
                 waktu DATETIME NOT NULL,
                 KEY {$q("idx_{$a}user_riwayat_akun_sasaran")} (sasaran_id, waktu),
                 KEY {$q("idx_{$a}user_riwayat_akun_lingkup")} (lingkup, waktu),
@@ -236,6 +247,8 @@ final class Skema
                 keterangan TEXT NOT NULL DEFAULT '',
                 ip TEXT NOT NULL DEFAULT '',
                 perangkat TEXT NOT NULL DEFAULT '',
+                pelaku_email TEXT NOT NULL DEFAULT '',
+                sasaran_email TEXT NOT NULL DEFAULT '',
                 waktu TEXT NOT NULL
             )",
             $t->token() => "CREATE TABLE IF NOT EXISTS {$q($t->token())} (
