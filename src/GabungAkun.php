@@ -42,6 +42,7 @@ final class GabungAkun
     private readonly string $tToken;
     private readonly string $tPengaturan;
     private readonly string $tProfil;
+    private readonly RiwayatAkun $riwayatAkun;
 
     public function __construct(
         private readonly Adapter $db,
@@ -58,6 +59,7 @@ final class GabungAkun
         $this->tToken       = $q($tabel->token());
         $this->tPengaturan  = $q($tabel->pengaturan());
         $this->tProfil      = $q($tabel->profil());
+        $this->riwayatAkun  = new RiwayatAkun($db, $tabel);
     }
 
     /**
@@ -132,6 +134,8 @@ final class GabungAkun
             $this->pindahEmail($a, $b);
             $this->pindahAkses($a->id, $b->id);
             $this->jalankan("UPDATE {$this->tRiwayat} SET user_id = ? WHERE user_id = ?", [$a->id, $b->id]);
+            // Catatan lama B (sebelum 2.5) diberi email B lebih dulu, agar sesudah pindah tetap terlihat berasal dari B.
+            $this->riwayatAkun->tandaiAsal($b->id, $b->email);
             $this->jalankan("UPDATE {$this->tRiwayatAkun} SET sasaran_id = ? WHERE sasaran_id = ?", [$a->id, $b->id]);
             $this->jalankan("UPDATE {$this->tRiwayatAkun} SET pelaku_id = ? WHERE pelaku_id = ?", [$a->id, $b->id]);
             $this->jalankan("DELETE FROM {$this->tToken} WHERE user_id = ?", [$b->id]);
