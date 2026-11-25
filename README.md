@@ -47,6 +47,26 @@ vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 [adems/dapur-database](https://github.com/AdeMS/dapur-database)). Pada Dapur AdeMS sebelum 2.10, pakai
 `vendor/bin/dapur-user pasang`, yang hanya memasang tabel modul ini.
 
+### Memperbarui dari 2.5 ke 2.6
+
+Setiap akun kini punya **kode acak** (22 huruf dan angka) yang dipakai di alamat dan form, menggantikan nomor akun:
+
+- profil rekan: `<alamat dasar>/profil?u=<kode akun>` (alamat lama `?id=<nomor>` dialihkan otomatis);
+- form Kelola User mengirim kode akun, dan form email di Pengaturan & Privasi mengirim alamat email, bukan nomornya;
+- modul lain (mis. adems/dapur-berkas) memakai kode akun untuk nama folder.
+
+Nomor akun tetap dipakai di dalam database (hubungan antartabel), tetapi tidak lagi terlihat dari luar, sehingga akun
+lain tidak bisa ditebak dengan mengganti angka.
+
+**Wajib** dijalankan sekali sesudah `composer update`:
+
+```bash
+php dapur pasang
+```
+
+Perintah itu menambah kolom `user.kode` beserta indeks uniknya, lalu memberi kode pada semua akun yang sudah ada
+(langkah `2.6-kode-user`). Sebelum itu, alamat dan form tetap memakai nomor akun seperti 2.5.
+
 ### Memperbarui dari 2.4 ke 2.5
 
 Versi 2.5 memindahkan pemasangan tabel ke paket [adems/dapur-database](https://github.com/AdeMS/dapur-database)
@@ -279,7 +299,7 @@ di dashboard website. Tautannya ada di submenu avatar. Halaman ini hanya untuk d
 email, peran, status) dengan tombol **Pengaturan akun**, dan kartu **Tentang** (pendidikan, lokasi, keahlian,
 biografi).
 
-**Profil rekan:** `<alamat dasar>/profil?id=<nomor>` menampilkan profil user lain, hanya bila user itu punya akses
+**Profil rekan:** `<alamat dasar>/profil?u=<kode akun>` menampilkan profil user lain, hanya bila user itu punya akses
 ke lingkup yang sama; selain itu "User tidak ditemukan di sini" (404). Nama di daftar user halaman User membuka
 halaman ini. Modul lain bisa menautkannya juga.
 
@@ -662,6 +682,7 @@ aktif dan nonaktif berlaku di semua lingkup.
   bukan di URL, dan hanya alamat di dalam pintu yang sama yang diterima.
 - Session disimpan di `data/cache/session/`, jadi folder `data/cache/` harus bisa ditulis web server.
 - Tautan email memakai token sekali pakai yang disimpan sebagai hash, dengan batas waktu (lihat [Email](#email)).
+- Alamat dan form memakai kode acak akun (2.6), bukan nomor akun, sehingga akun lain tidak bisa ditebak dari alamat.
 
 ## Uji
 
