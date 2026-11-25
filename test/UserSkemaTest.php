@@ -39,7 +39,7 @@ final class UserSkemaTest extends TestCase
 
         $langkah = $db->query('SELECT modul, langkah FROM "xyz_dapur_skema" ORDER BY langkah', Adapter::QUERY_MODE_EXECUTE)->toArray();
         self::assertSame(
-            [['modul' => 'user', 'langkah' => '2.0-peran-admin'], ['modul' => 'user', 'langkah' => '2.2-email-utama']],
+            [['modul' => 'user', 'langkah' => '2.0-peran-admin'], ['modul' => 'user', 'langkah' => '2.2-email-utama'], ['modul' => 'user', 'langkah' => '2.6-kode-user']],
             $langkah,
         );
     }
