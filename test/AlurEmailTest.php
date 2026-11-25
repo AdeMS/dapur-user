@@ -301,7 +301,7 @@ final class AlurEmailTest extends TestCase
 
         // Kirim ulang membatalkan tautan lama.
         $lama = $this->tokenTerakhir();
-        $this->kelola()->handle($this->permintaan('POST', '/user', ['aksi' => 'undang', 'user_id' => (string) $citra['id']], $this->admin));
+        $this->kelola()->handle($this->permintaan('POST', '/user', ['aksi' => 'undang', 'user' => $citra['kode']], $this->admin));
         self::assertCount(2, $this->pengirim->terkirim);
         self::assertNull($this->token->periksa($lama, [TokenUser::UNDANGAN]));
         self::assertNotNull($this->token->periksa($this->tokenTerakhir(), [TokenUser::UNDANGAN]));
@@ -399,6 +399,19 @@ final class AlurEmailTest extends TestCase
         self::assertSame('budi@contoh.com', $this->daftar->cariId($this->budi)?->email, 'Email utama tidak berubah.');
         self::assertSame(RiwayatAkun::TAMBAH_EMAIL, (new RiwayatAkun($this->db))->untukUser($this->budi)[0]['peristiwa']);
         self::assertSame(410, $this->verifikasi()->handle($this->permintaan('POST', '/verifikasi-email', ['token' => $token]))->getStatusCode());
+    }
+
+    public function testFormEmailMemakaiAlamatBukanNomor(): void
+    {
+        $email = $this->daftar->email();
+        $email->tambah($this->budi, 'budi@kantor.co.id');
+        $kirim = fn (array $isi) => $this->profil()->handle($this->permintaan('POST', '/pengaturan', $isi, $this->budi));
+
+        self::assertSame(302, $kirim(['aksi' => 'utama_email', 'email' => 'BUDI@kantor.co.id'])->getStatusCode());
+        self::assertSame('budi@kantor.co.id', $this->daftar->cariId($this->budi)?->email);
+        self::assertSame(422, $kirim(['aksi' => 'hapus_email', 'email' => 'orang@lain.com'])->getStatusCode(), 'email milik orang lain / tidak ada');
+        self::assertSame(302, $kirim(['aksi' => 'hapus_email', 'email' => 'budi@contoh.com'])->getStatusCode());
+        self::assertNull($email->id($this->budi, 'budi@contoh.com'));
     }
 
     public function testJadikanUtamaDanHapusEmail(): void
