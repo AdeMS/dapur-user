@@ -52,6 +52,8 @@ final class DaftarUser
     /** Profil (2.3): Tentang, nama depan/tengah/belakang, foto, dan profil per website; tersedia sesudah pasang. */
     private readonly ProfilUser $profil;
 
+    private ?bool $adaKode = null;
+
     public function __construct(
         private readonly Adapter $db,
         NamaTabel $tabel = new NamaTabel(),
@@ -84,12 +86,95 @@ final class DaftarUser
         return $this->user("SELECT * FROM {$this->tUser} WHERE id = ?", [$id]);
     }
 
+    /** Akun dengan kode acak ini (2.6). */
+    public function cariKode(string $kode): ?User
+    {
+        return self::kodeSah($kode) && $this->adaKode()
+            ? $this->user("SELECT * FROM {$this->tUser} WHERE kode = ?", [$kode])
+            : null;
+    }
+
+    /**
+     * Nomor akun dari pengenal yang dikirim alamat atau form: kode acak; nomor angka hanya diterima selama kode belum
+     * dibuat (sebelum `php dapur pasang` versi 2.6), agar nomor akun tidak bisa ditebak dari luar.
+     */
+    public function idDari(mixed $pengenal): ?int
+    {
+        if (! is_string($pengenal) || $pengenal === '') {
+            return null;
+        }
+
+        if ($this->adaKode()) {
+            return $this->cariKode($pengenal)?->id;
+        }
+
+        return ctype_digit($pengenal) && $pengenal !== '0' ? (int) $pengenal : null;
+    }
+
+    /** @return array<int, string> nomor akun => pengenal untuk alamat dan form (kode, atau nomor sebelum 2.6) */
+    public function pengenalSemua(): array
+    {
+        $hasil = [];
+        if ($this->adaKode()) {
+            foreach ($this->baris("SELECT id, kode FROM {$this->tUser}", []) as $b) {
+                $hasil[(int) $b['id']] = (string) ($b['kode'] ?? '') !== '' ? (string) $b['kode'] : (string) $b['id'];
+            }
+        }
+
+        return $hasil;
+    }
+
+    /** Langkah 2.6: memberi kode acak pada akun yang belum punya. @return int jumlah akun yang diisi */
+    public function isiKodeKosong(): int
+    {
+        $diisi = 0;
+        foreach ($this->baris("SELECT id FROM {$this->tUser} WHERE kode IS NULL OR kode = ''", []) as $b) {
+            $this->jalankan("UPDATE {$this->tUser} SET kode = ? WHERE id = ?", [$this->kodeBaru(), (int) $b['id']]);
+            $diisi++;
+        }
+
+        return $diisi;
+    }
+
+    /** Kolom kode sudah ada (sesudah `php dapur pasang` versi 2.6). */
+    public function adaKode(): bool
+    {
+        if ($this->adaKode === null) {
+            try {
+                $this->baris("SELECT kode FROM {$this->tUser} WHERE 1 = 0", []);
+                $this->adaKode = true;
+            } catch (\Throwable) {
+                $this->adaKode = false;
+            }
+        }
+
+        return $this->adaKode;
+    }
+
+    public static function kodeSah(string $kode): bool
+    {
+        return preg_match('/^[0-9A-Za-z]{22}$/', $kode) === 1;
+    }
+
+    private function kodeBaru(): string
+    {
+        $huruf = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        do {
+            $kode = '';
+            for ($i = 0; $i < 22; $i++) {
+                $kode .= $huruf[random_int(0, 61)];
+            }
+        } while ($this->baris("SELECT 1 FROM {$this->tUser} WHERE kode = ?", [$kode]) !== []);
+
+        return $kode;
+    }
+
     public function buat(string $email, string $nama, string $kataSandi): int
     {
-        $this->jalankan(
-            "INSERT INTO {$this->tUser} (email, nama, kata_sandi, aktif, dibuat_pada) VALUES (?, ?, ?, 1, ?)",
-            [self::normalkanEmail($email), $nama, self::hash($kataSandi), gmdate('Y-m-d H:i:s')],
-        );
+        $data = [self::normalkanEmail($email), $nama, self::hash($kataSandi), gmdate('Y-m-d H:i:s')];
+        $this->adaKode()
+            ? $this->jalankan("INSERT INTO {$this->tUser} (email, nama, kata_sandi, aktif, dibuat_pada, kode) VALUES (?, ?, ?, 1, ?, ?)", [...$data, $this->kodeBaru()])
+            : $this->jalankan("INSERT INTO {$this->tUser} (email, nama, kata_sandi, aktif, dibuat_pada) VALUES (?, ?, ?, 1, ?)", $data);
 
         $id = (int) $this->db->getDriver()->getLastGeneratedValue();
         if ($this->email->tersedia()) {
@@ -467,6 +552,8 @@ final class DaftarUser
             (string) ($baris[0]['nama_tengah'] ?? ''),
             (string) ($baris[0]['nama_belakang'] ?? ''),
             (string) ($baris[0]['foto'] ?? ''),
+            // Kolom 2.6.
+            (string) ($baris[0]['kode'] ?? ''),
         );
     }
 
