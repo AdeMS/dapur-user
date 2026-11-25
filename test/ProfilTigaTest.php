@@ -206,6 +206,23 @@ final class ProfilTigaTest extends TestCase
         self::assertSame([RiwayatAkun::UBAH_PROFIL, 'Tentang: pendidikan, lokasi, biografi'], [$riwayat['peristiwa'], $riwayat['keterangan']]);
     }
 
+    public function testStatusDiubahDiTempat(): void
+    {
+        $kirim = fn (string $status): ResponseInterface => $this->handler(self::WEBSITE)
+            ->handle($this->permintaan('POST', self::WEBSITE, $this->ade, ['aksi' => 'status', 'status' => $status, 'json' => '1']));
+
+        $hasil = $kirim('  Rapat sampai sore  ');
+        self::assertSame(200, $hasil->getStatusCode());
+        self::assertSame(['status' => 'Rapat sampai sore', 'pesan' => 'Status sudah disimpan.'], json_decode((string) $hasil->getBody(), true));
+        self::assertSame(['status' => 'Rapat sampai sore'], $this->daftar->profil()->ambil($this->ade));
+
+        $galat = $kirim(str_repeat('a', 101));
+        self::assertSame(422, $galat->getStatusCode());
+        self::assertArrayHasKey('galat', json_decode((string) $galat->getBody(), true));
+
+        self::assertSame('', json_decode((string) $kirim('')->getBody(), true)['status'], 'Kosong = status dihapus.');
+    }
+
     public function testStatus(): void
     {
         $kirim = fn (string $status): ResponseInterface => $this->handler(self::WEBSITE)
