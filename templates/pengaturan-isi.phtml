@@ -290,7 +290,7 @@ $pilihWebsite = $this->bisaPilihEmailWebsite ?? false;
                             <form method="post" action="<?= $aksi ?>">
                                 <?= $csrf ?>
                                 <input type="hidden" name="aksi" value="email_website">
-                                <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
+                                <input type="hidden" name="email" value="<?= $this->escapeHtmlAttr($e['email']) ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-info" title="Pakai di website ini" aria-label="Pakai <?= $this->escapeHtmlAttr($e['email']) ?> di website ini"><i class="bi bi-globe2" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Pakai di website ini</span></button>
                             </form>
 <?php endif ?>
@@ -301,13 +301,13 @@ $pilihWebsite = $this->bisaPilihEmailWebsite ?? false;
                             <form method="post" action="<?= $aksi ?>">
                                 <?= $csrf ?>
                                 <input type="hidden" name="aksi" value="utama_email">
-                                <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
+                                <input type="hidden" name="email" value="<?= $this->escapeHtmlAttr($e['email']) ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary" title="Jadikan utama" aria-label="Jadikan <?= $this->escapeHtmlAttr($e['email']) ?> email utama"><i class="bi bi-star" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Jadikan utama</span></button>
                             </form>
                             <form method="post" action="<?= $aksi ?>" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode('Hapus ' . $e['email'] . ' dari akun Anda?')) ?>)">
                                 <?= $csrf ?>
                                 <input type="hidden" name="aksi" value="hapus_email">
-                                <input type="hidden" name="email_id" value="<?= (int) $e['id'] ?>">
+                                <input type="hidden" name="email" value="<?= $this->escapeHtmlAttr($e['email']) ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus" aria-label="Hapus <?= $this->escapeHtmlAttr($e['email']) ?>"><i class="bi bi-trash" aria-hidden="true"></i><span class="d-none d-md-inline ms-1">Hapus</span></button>
                             </form>
 <?php endif ?>
