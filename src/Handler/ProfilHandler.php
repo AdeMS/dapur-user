@@ -36,7 +36,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Halaman milik user yang sedang login, dipasang di belakang WajibMasukMiddleware. Satu kelas melayani dua halaman:
- * - Profil (HALAMAN_PROFIL): kartu user dan bagian Tentang (hanya dibaca). Dengan ?id=<nomor>, profil rekan yang
+ * - Profil (HALAMAN_PROFIL): kartu user dan bagian Tentang (hanya dibaca). Dengan ?u=<kode akun>, profil rekan yang
  *   sama-sama punya akses ke lingkup ini;
  * - Pengaturan & Privasi (HALAMAN_PENGATURAN): tab Akun Saya (foto, nama, Tentang, profil di website ini; mengganti
  *   email bila email bisa dikirim dan mengganti kata sandi lewat popup), Aktivitas (perubahan akun), dan Riwayat
@@ -782,14 +782,25 @@ final class ProfilHandler implements RequestHandlerInterface
     }
 
     /**
-     * Halaman Profil: milik sendiri, atau (dengan ?id=) milik rekan yang punya akses ke lingkup ini.
+     * Halaman Profil: milik sendiri, atau (dengan ?u=<kode akun>) milik rekan yang punya akses ke lingkup ini.
+     * Alamat lama ?id=<nomor> dialihkan ke ?u=<kode> sesudah kode akun dibuat (2.6).
      */
     private function halamanProfil(ServerRequestInterface $request, User $user, ?string $pesan): ResponseInterface
     {
-        $id     = $request->getQueryParams()['id'] ?? null;
+        $q  = $request->getQueryParams();
+        $id = $q['id'] ?? null;
+        if (is_string($id) && ctype_digit($id) && $this->daftar->adaKode()) {
+            $lama = $this->daftar->cariId((int) $id);
+            if ($lama !== null && $lama->kode !== '') {
+                return new RedirectResponse($this->pintu->alamatProfil() . '?u=' . rawurlencode($lama->kode));
+            }
+        }
+
+        $u      = $q['u'] ?? $id;
         $target = $user;
-        if (is_string($id) && $id !== '' && $id !== (string) $user->id) {
-            $target = ctype_digit($id) ? $this->daftar->cariId((int) $id) : null;
+        if (is_string($u) && $u !== '' && $u !== $user->pengenal()) {
+            $targetId = $this->daftar->idDari($u);
+            $target   = $targetId === null ? null : $this->daftar->cariId($targetId);
             if ($target === null || $this->daftar->peran($target->id, $this->pintu->lingkup) === null) {
                 return $this->halaman($request, $user, ['tidakDitemukan' => true, 'profil' => null], 404);
             }
@@ -821,6 +832,7 @@ final class ProfilHandler implements RequestHandlerInterface
 
         return [
             'id'      => $target->id,
+            'kode'    => $target->pengenal(),
             'nama'    => $identitas->nama,
             'email'   => $identitas->email,
             'foto'    => $identitas->foto,
@@ -884,7 +896,7 @@ final class ProfilHandler implements RequestHandlerInterface
     private function jadikanEmailUtama(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
     {
         $email = $this->daftar->email();
-        $id    = $this->emailId($isi);
+        $id    = $this->emailId($isi, $user->id);
         $baru  = $id === null || ! $email->tersedia() ? null : $email->milik($user->id, $id);
         if ($baru === null) {
             return $this->galat($request, $user, 'email_saya', 'Email tidak ditemukan di akun Anda.', 404);
@@ -904,7 +916,7 @@ final class ProfilHandler implements RequestHandlerInterface
     private function hapusEmail(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
     {
         $email   = $this->daftar->email();
-        $id      = $this->emailId($isi);
+        $id      = $this->emailId($isi, $user->id);
         $dihapus = $id === null || ! $email->tersedia() ? null : $email->hapus($user->id, $id);
         if ($dihapus === null) {
             return $this->galat($request, $user, 'email_saya', 'Email utama tidak bisa dihapus. Jadikan email lain sebagai email utama lebih dulu.', 422);
@@ -929,7 +941,7 @@ final class ProfilHandler implements RequestHandlerInterface
             return $this->galat($request, $user, 'email_saya', 'Email untuk website ini tidak bisa dipilih.', 422);
         }
 
-        $id      = $this->emailId($isi);
+        $id      = $this->emailId($isi, $user->id);
         $dipilih = $id === null ? $user->email : $email->milik($user->id, $id);
         if ($dipilih === null) {
             return $this->galat($request, $user, 'email_saya', 'Email tidak ditemukan di akun Anda.', 404);
@@ -948,9 +960,25 @@ final class ProfilHandler implements RequestHandlerInterface
         return new RedirectResponse($this->alamatPengaturan('akun'));
     }
 
-    /** @param array<mixed> $isi */
-    private function emailId(array $isi): ?int
+    /**
+     * Email yang dipilih di form: alamat email milik akun ini (2.6). Nomor email lama (email_id) masih diterima.
+     *
+     * @param array<mixed> $isi
+     */
+    private function emailId(array $isi, int $userId): ?int
     {
+        $email = $isi['email'] ?? null;
+        if (is_string($email) && $email !== '') {
+            $daftar = $this->daftar->email();
+            foreach ($daftar->daftar($userId) as $e) {
+                if (strcasecmp((string) $e['email'], trim($email)) === 0) {
+                    return (int) $e['id'];
+                }
+            }
+
+            return null;
+        }
+
         $id = $isi['email_id'] ?? null;
 
         return is_string($id) && ctype_digit($id) && $id !== '0' ? (int) $id : null;
