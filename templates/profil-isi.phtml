@@ -82,8 +82,10 @@ $profil = $this->profil ?? (($this->tidakDitemukan ?? false) ? null : [
 <?php endif ?>
                         <h2 class="h5 mb-0"><?= $this->escapeHtml($profil['nama']) ?></h2>
                         <div class="text-body-secondary text-break"><?= $this->escapeHtml($profil['email']) ?></div>
-<?php if (($profil['status'] ?? '') !== '') : ?>
-                        <p class="fst-italic text-break mt-2 mb-0"><i class="bi bi-chat-quote me-1 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><?= $this->escapeHtml($profil['status']) ?></p>
+<?php if ($profil['diri'] && ($this->alamatPengaturan ?? null)) : ?>
+                        <p class="text-break mt-2 mb-0"><button type="button" class="btn btn-link p-0 text-reset text-decoration-none text-start user-profil-status<?= ($profil['status'] ?? '') === '' ? ' text-body-secondary' : '' ?>" data-status-ubah data-status="<?= $this->escapeHtmlAttr((string) ($profil['status'] ?? '')) ?>" title="Klik untuk mengubah status"><?php if (($profil['status'] ?? '') !== '') : ?><i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($profil['status']) ?></em><?php else : ?><i class="bi bi-chat-quote me-2" aria-hidden="true"></i>Atur status…<?php endif ?></button></p>
+<?php elseif (($profil['status'] ?? '') !== '') : ?>
+                        <p class="text-break mt-2 mb-0 d-inline-flex align-items-baseline text-start"><i class="bi bi-chat-quote me-2 text-body-secondary flex-shrink-0" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($profil['status']) ?></em></p>
 <?php endif ?>
                     </div>
                     <dl class="user-profil-data mb-3">
