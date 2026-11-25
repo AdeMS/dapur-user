@@ -60,6 +60,8 @@ $avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
     .user-menu-status > .bi, .user-profil-status > .bi { flex: 0 0 auto; }
     .user-menu-status > em, .user-profil-status > em { min-width: 0; overflow-wrap: anywhere; }
     .user-menu-status > input, .user-profil-status > input { flex: 1 1 auto; min-width: 12rem; }
+    /* Saat diubah, kotak isian melebar sampai sisi kanan kartu. */
+    .user-profil-status[data-sedang] { width: 100%; }
 </style>
 <?php $this->placeholder('menu-kanan')->captureStart() ?>
                             <li class="nav-item dropdown">
