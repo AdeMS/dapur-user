@@ -55,6 +55,11 @@ $avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
     .user-menu-kepala { padding-left: .75rem; }
     /* Status di submenu: boleh beberapa baris, tidak melebarkan menu */
     .user-menu-status { white-space: normal; max-width: 18rem; font-size: .875rem; }
+    /* Status panjang: baris berikutnya sejajar dengan awal teks, tidak turun ke bawah ikon. */
+    .user-menu-status, .user-profil-status { display: flex; align-items: baseline; text-align: start; }
+    .user-menu-status > .bi, .user-profil-status > .bi { flex: 0 0 auto; }
+    .user-menu-status > em, .user-profil-status > em { min-width: 0; overflow-wrap: anywhere; }
+    .user-menu-status > input, .user-profil-status > input { flex: 1 1 auto; min-width: 12rem; }
 </style>
 <?php $this->placeholder('menu-kanan')->captureStart() ?>
                             <li class="nav-item dropdown">
@@ -70,15 +75,15 @@ $avatar    = fn (string $kelas = ''): string => $this->partial('user::avatar', [
                                         </div>
                                     </li>
 <?php
-// Status: tampil di bawah nama; tanpa status, ajakan "Atur status" bila halaman Pengaturan & Privasi ada. Keduanya
-// membuka tab Profil, tempat status diubah.
+// Status: tampil di bawah nama; tanpa status, ajakan "Atur status". Bila halaman Pengaturan & Privasi ada, status
+// bisa langsung diketik di sini (dan di kartu Profil sendiri): klik, ketik, Enter simpan, Esc batal.
 $statusMenu    = $identitas?->status ?? '';
 $alamatStatus  = ($this->alamatPengaturan ?? null) ? $this->alamatPengaturan . '?tab=profil' : null;
 ?>
-<?php if ($statusMenu !== '') : ?>
-                                    <li><?= $alamatStatus !== null ? '<a class="dropdown-item user-menu-status" href="' . $this->escapeHtmlAttr($alamatStatus) . '" title="Ubah status">' : '<span class="dropdown-item-text user-menu-status">' ?><i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($statusMenu) ?></em><?= $alamatStatus !== null ? '</a>' : '</span>' ?></li>
-<?php elseif ($alamatStatus !== null && $identitas !== null) : ?>
-                                    <li><a class="dropdown-item user-menu-status text-body-secondary" href="<?= $this->escapeHtmlAttr($alamatStatus) ?>"><i class="bi bi-chat-quote me-2" aria-hidden="true"></i>Atur status…</a></li>
+<?php if ($alamatStatus !== null && $identitas !== null) : ?>
+                                    <li><button type="button" class="dropdown-item user-menu-status<?= $statusMenu === '' ? ' text-body-secondary' : '' ?>" data-status-ubah data-status="<?= $this->escapeHtmlAttr($statusMenu) ?>" title="Klik untuk mengubah status"><?php if ($statusMenu !== '') : ?><i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($statusMenu) ?></em><?php else : ?><i class="bi bi-chat-quote me-2" aria-hidden="true"></i>Atur status…<?php endif ?></button></li>
+<?php elseif ($statusMenu !== '') : ?>
+                                    <li><span class="dropdown-item-text user-menu-status"><i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em><?= $this->escapeHtml($statusMenu) ?></em></span></li>
 <?php endif ?>
                                     <li><hr class="dropdown-divider"></li>
 <?php if ($this->alamatProfil ?? null) : ?>
@@ -99,3 +104,90 @@ $alamatStatus  = ($this->alamatPengaturan ?? null) ? $this->alamatPengaturan . '
                                 </ul>
                             </li>
 <?php $this->placeholder('menu-kanan')->captureEnd() ?>
+<?php if ($alamatStatus !== null && $identitas !== null) : ?>
+<script>
+(() => {
+    if (window.dapurUbahStatus) {
+        return;
+    }
+    window.dapurUbahStatus = true;
+    const alamat = <?= json_encode($this->alamatPengaturan) ?>;
+    const csrfNama = <?= json_encode($this->fieldCsrf) ?>;
+    const csrf = <?= json_encode($this->tokenCsrf) ?>;
+    const aman = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+    const isiTampil = (teks) => teks !== ''
+        ? '<i class="bi bi-chat-quote me-2 text-body-secondary" aria-hidden="true"></i><span class="visually-hidden">Status: </span><em>' + aman(teks) + '</em>'
+        : '<i class="bi bi-chat-quote me-2" aria-hidden="true"></i>Atur status…';
+
+    const mulai = (el) => {
+        el.dataset.sedang = '1';
+        const asal = el.innerHTML;
+        const nilai = el.dataset.status || '';
+        const isian = document.createElement('input');
+        isian.className = 'form-control form-control-sm';
+        isian.maxLength = 100;
+        isian.value = nilai;
+        isian.placeholder = 'Status saat ini…';
+        isian.setAttribute('aria-label', 'Status');
+        el.replaceChildren(isian);
+        isian.focus();
+        isian.select();
+        let selesai = false;
+        const tutup = (html) => { selesai = true; el.innerHTML = html; delete el.dataset.sedang; };
+        const simpan = async () => {
+            if (selesai) {
+                return;
+            }
+            const teks = isian.value.trim();
+            if (teks === nilai) {
+                tutup(asal);
+                return;
+            }
+            selesai = true;
+            const form = new FormData();
+            form.append(csrfNama, csrf);
+            form.append('aksi', 'status');
+            form.append('status', teks);
+            form.append('json', '1');
+            try {
+                const jawab = await fetch(alamat, { method: 'POST', body: form, credentials: 'same-origin' });
+                const isi = await jawab.json().catch(() => ({ galat: 'Server menjawab ' + jawab.status + '.' }));
+                if (!jawab.ok || isi.galat) {
+                    throw new Error(isi.galat || 'Status tidak tersimpan.');
+                }
+                // Perbarui semua tampilan status di halaman ini (menu avatar dan kartu Profil).
+                document.querySelectorAll('[data-status-ubah]').forEach((x) => {
+                    x.dataset.status = isi.status;
+                    x.classList.toggle('text-body-secondary', isi.status === '');
+                    if (x !== el) { x.innerHTML = isiTampil(isi.status); }
+                });
+                el.innerHTML = isiTampil(isi.status);
+                delete el.dataset.sedang;
+            } catch (err) {
+                selesai = false;
+                isian.classList.add('is-invalid');
+                isian.title = err.message;
+                isian.focus();
+            }
+        };
+        isian.addEventListener('click', (e) => e.stopPropagation());
+        isian.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); simpan(); }
+            if (e.key === 'Escape') { e.preventDefault(); tutup(asal); }
+        });
+        isian.addEventListener('blur', () => simpan());
+    };
+
+    document.addEventListener('click', (e) => {
+        const el = e.target.closest('[data-status-ubah]');
+        if (!el || el.dataset.sedang) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation(); // menu avatar tetap terbuka selama mengetik
+        mulai(el);
+    }, true);
+})();
+</script>
+<?php endif ?>
