@@ -304,7 +304,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $semua   = $this->bisaLihatSemua($admin);
         $sasaran = $this->sasaran($isi);
         if ($sasaran === null && $semua) {
-            $id      = is_string($isi['user_id'] ?? null) && ctype_digit($isi['user_id']) ? (int) $isi['user_id'] : 0;
+            $id      = $this->daftar->idDari($isi['user'] ?? $isi['user_id'] ?? null) ?? 0;
             $akun    = $this->daftar->cariId($id);
             $sasaran = $akun === null ? null : [$akun, null];
         }
@@ -349,7 +349,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Email akun hanya bisa dilepas oleh admin super di dashboard utama.', 403);
         }
 
-        $id     = is_string($isi['user_id'] ?? null) && ctype_digit($isi['user_id']) ? (int) $isi['user_id'] : 0;
+        $id     = $this->daftar->idDari($isi['user'] ?? $isi['user_id'] ?? null) ?? 0;
         $target = $this->daftar->cariId($id);
         $email  = is_string($isi['email'] ?? null) ? DaftarUser::normalkanEmail($isi['email']) : '';
         $emails = $this->daftar->email();
@@ -466,7 +466,7 @@ final class KelolaUserHandler implements RequestHandlerInterface
             return $this->galat($request, $admin, 'Website tidak dikenal.', $this->bisaLihatSemua($admin) ? 422 : 403);
         }
 
-        $id     = is_string($isi['user_id'] ?? null) && ctype_digit($isi['user_id']) ? (int) $isi['user_id'] : 0;
+        $id     = $this->daftar->idDari($isi['user'] ?? $isi['user_id'] ?? null) ?? 0;
         $target = $this->daftar->cariId($id);
         if ($target === null) {
             return $this->galat($request, $admin, 'User tidak ditemukan.', 404);
@@ -636,13 +636,13 @@ final class KelolaUserHandler implements RequestHandlerInterface
      */
     private function sasaran(array $isi): ?array
     {
-        $id = $isi['user_id'] ?? null;
-        if (! is_string($id) || ! ctype_digit($id)) {
+        $id = $this->daftar->idDari($isi['user'] ?? $isi['user_id'] ?? null);
+        if ($id === null) {
             return null;
         }
 
         $lingkup = $this->pintu->lingkup;
-        $user    = $this->daftar->cariId((int) $id);
+        $user    = $this->daftar->cariId($id);
         if ($user === null || ($lingkup !== Konteks::LINGKUP_UTAMA && $this->daftar->adalahAdminSuper($user->id))) {
             return null;
         }
@@ -703,7 +703,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
         $namaWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::NAMA) : [];
         $fotoWeb  = $diWebsite ? $profil->untukLingkup($lingkup, ProfilUser::FOTO) : [];
         $statusUser = $profil->untukLingkup('', ProfilUser::STATUS);
-        $tampil   = function (int $id, string $nama, string $email) use ($fotoAkun, $namaWeb, $fotoWeb, $statusUser): array {
+        $pengenal = $this->daftar->pengenalSemua();
+        $tampil   = function (int $id, string $nama, string $email) use ($fotoAkun, $namaWeb, $fotoWeb, $statusUser, $pengenal): array {
             $nama = $namaWeb[$id] ?? $nama;
             $foto = $fotoWeb[$id] ?? $fotoAkun[$id] ?? '';
 
@@ -712,6 +713,8 @@ final class KelolaUserHandler implements RequestHandlerInterface
                 'foto'       => $foto === '' ? null : $this->pintu->alamatFoto($foto),
                 'inisial'    => User::inisialDari($nama, $email),
                 'status'     => $statusUser[$id] ?? '',
+                // Kode akun untuk alamat profil dan form (nomor akun tidak dipakai di luar server).
+                'kode'       => $pengenal[$id] ?? (string) $id,
             ];
         };
 
