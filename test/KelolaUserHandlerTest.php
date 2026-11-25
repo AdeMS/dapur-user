@@ -52,6 +52,20 @@ final class KelolaUserHandlerTest extends TestCase
         $this->daftar->tambahAkses($this->budi, self::LINGKUP, DaftarUser::PERAN_ANGGOTA);
     }
 
+    /** Kode akun (2.6), yang dipakai form sebagai pengenal user. */
+    private function kode(int $id): string
+    {
+        return (string) $this->daftar->cariId($id)?->kode;
+    }
+
+    public function testNomorAkunTidakDiterimaSesudahAdaKode(): void
+    {
+        self::assertSame(22, strlen($this->kode($this->budi)));
+        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->budi])->getStatusCode(), 'nomor akun tidak bisa dipakai menebak');
+        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user' => (string) $this->budi])->getStatusCode());
+        self::assertNotNull($this->daftar->peran($this->budi, self::LINGKUP));
+    }
+
     private function handler(bool $kelolaAkun = false): KelolaUserHandler
     {
         return new KelolaUserHandler(
@@ -98,7 +112,7 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertTrue($this->renderer->data['ditolak']);
         self::assertSame([], $this->renderer->data['daftarUser']);
 
-        self::assertSame(403, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->admin], sebagai: $this->budi)->getStatusCode());
+        self::assertSame(403, $this->post(['aksi' => 'cabut', 'user' => $this->kode($this->admin)], sebagai: $this->budi)->getStatusCode());
         self::assertTrue($this->daftar->punyaAkses($this->admin, self::LINGKUP));
     }
 
@@ -168,27 +182,27 @@ final class KelolaUserHandlerTest extends TestCase
 
     public function testUbahPeran(): void
     {
-        $this->post(['aksi' => 'peran', 'user_id' => (string) $this->budi, 'peran' => 'admin_web']);
+        $this->post(['aksi' => 'peran', 'user' => $this->kode($this->budi), 'peran' => 'admin_web']);
 
         self::assertSame('admin_web', $this->daftar->peran($this->budi, self::LINGKUP));
         self::assertSame('anggota → admin_web', $this->riwayatAkun->untukUser($this->budi)[0]['keterangan']);
 
-        self::assertSame(422, $this->post(['aksi' => 'peran', 'user_id' => (string) $this->admin, 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $this->post(['aksi' => 'peran', 'user' => $this->kode($this->admin), 'peran' => 'anggota'])->getStatusCode());
         self::assertSame('admin_web', $this->daftar->peran($this->admin, self::LINGKUP));
 
         // Admin super hanya bisa dipilih di dashboard utama.
-        self::assertSame(422, $this->post(['aksi' => 'peran', 'user_id' => (string) $this->budi, 'peran' => 'admin_super'])->getStatusCode());
+        self::assertSame(422, $this->post(['aksi' => 'peran', 'user' => $this->kode($this->budi), 'peran' => 'admin_super'])->getStatusCode());
     }
 
     public function testCabutAkses(): void
     {
-        $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->budi]);
+        $this->post(['aksi' => 'cabut', 'user' => $this->kode($this->budi)]);
 
         self::assertNull($this->daftar->peran($this->budi, self::LINGKUP));
         self::assertNotNull($this->daftar->cariId($this->budi), 'Akun tidak dihapus.');
         self::assertSame(RiwayatAkun::CABUT_AKSES, $this->riwayatAkun->untukLingkup(self::LINGKUP)[0]['peristiwa']);
 
-        self::assertSame(422, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->admin])->getStatusCode());
+        self::assertSame(422, $this->post(['aksi' => 'cabut', 'user' => $this->kode($this->admin)])->getStatusCode());
     }
 
     public function testUserLingkupLainTidakBisaDisentuh(): void
@@ -196,8 +210,8 @@ final class KelolaUserHandlerTest extends TestCase
         $lain = $this->daftar->buat('lain@contoh.com', 'Lain', self::SANDI);
         $this->daftar->tambahAkses($lain, 'blog.contoh.com');
 
-        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user_id' => (string) $lain])->getStatusCode());
-        self::assertSame(404, $this->post(['aksi' => 'aktif', 'user_id' => (string) $lain, 'nilai' => '0'], true)->getStatusCode());
+        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user' => $this->kode($lain)])->getStatusCode());
+        self::assertSame(404, $this->post(['aksi' => 'aktif', 'user' => $this->kode($lain), 'nilai' => '0'], true)->getStatusCode());
         self::assertSame(404, $this->post(['aksi' => 'peran', 'user_id' => 'abc', 'peran' => 'admin_web'])->getStatusCode());
         self::assertTrue($this->daftar->punyaAkses($lain, 'blog.contoh.com'));
         self::assertTrue((bool) $this->daftar->cariId($lain)?->aktif);
@@ -205,17 +219,17 @@ final class KelolaUserHandlerTest extends TestCase
 
     public function testAktifNonaktifHanyaBilaDiizinkan(): void
     {
-        self::assertSame(403, $this->post(['aksi' => 'aktif', 'user_id' => (string) $this->budi, 'nilai' => '0'])->getStatusCode());
+        self::assertSame(403, $this->post(['aksi' => 'aktif', 'user' => $this->kode($this->budi), 'nilai' => '0'])->getStatusCode());
         self::assertTrue((bool) $this->daftar->cariId($this->budi)?->aktif);
 
-        $this->post(['aksi' => 'aktif', 'user_id' => (string) $this->budi, 'nilai' => '0'], true);
+        $this->post(['aksi' => 'aktif', 'user' => $this->kode($this->budi), 'nilai' => '0'], true);
         self::assertFalse((bool) $this->daftar->cariId($this->budi)?->aktif);
         self::assertSame(RiwayatAkun::NONAKTIFKAN, $this->riwayatAkun->untukUser($this->budi)[0]['peristiwa']);
 
-        $this->post(['aksi' => 'aktif', 'user_id' => (string) $this->budi, 'nilai' => '1'], true);
+        $this->post(['aksi' => 'aktif', 'user' => $this->kode($this->budi), 'nilai' => '1'], true);
         self::assertTrue((bool) $this->daftar->cariId($this->budi)?->aktif);
 
-        self::assertSame(422, $this->post(['aksi' => 'aktif', 'user_id' => (string) $this->admin, 'nilai' => '0'], true)->getStatusCode());
+        self::assertSame(422, $this->post(['aksi' => 'aktif', 'user' => $this->kode($this->admin), 'nilai' => '0'], true)->getStatusCode());
         self::assertTrue((bool) $this->daftar->cariId($this->admin)?->aktif);
     }
 
@@ -233,8 +247,8 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame(['admin_web' => 'Admin Web', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
 
         // Admin web tidak bisa mengubah atau mencabut admin super lewat ID.
-        self::assertSame(404, $this->post(['aksi' => 'peran', 'user_id' => (string) $super, 'peran' => 'anggota'])->getStatusCode());
-        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user_id' => (string) $super])->getStatusCode());
+        self::assertSame(404, $this->post(['aksi' => 'peran', 'user' => $this->kode($super), 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(404, $this->post(['aksi' => 'cabut', 'user' => $this->kode($super)])->getStatusCode());
         self::assertSame(422, $this->post(['aksi' => 'tambah', 'email' => 'super@contoh.com', 'nama' => '', 'peran' => 'anggota'])->getStatusCode());
         self::assertSame('admin_super', $this->daftar->peran($super, self::LINGKUP));
     }
@@ -244,7 +258,7 @@ final class KelolaUserHandlerTest extends TestCase
         $super = $this->daftar->buat('super@contoh.com', 'Super', self::SANDI);
         $this->daftar->tambahAkses($super, 'dashboard');
 
-        $this->post(['aksi' => 'peran', 'user_id' => (string) $this->budi, 'peran' => 'admin_web'], sebagai: $super);
+        $this->post(['aksi' => 'peran', 'user' => $this->kode($this->budi), 'peran' => 'admin_web'], sebagai: $super);
         self::assertSame('admin_web', $this->daftar->peran($this->budi, self::LINGKUP));
     }
 
@@ -261,25 +275,25 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame(['admin_super' => 'Admin Super', 'anggota' => 'Anggota'], $this->renderer->data['peranTersedia']);
 
         // Kedua dijadikan admin super, lalu boleh diturunkan lagi karena masih ada admin super lain.
-        $this->post(['aksi' => 'peran', 'user_id' => (string) $kedua, 'peran' => 'admin_super'], true, sebagai: $super);
+        $this->post(['aksi' => 'peran', 'user' => $this->kode($kedua), 'peran' => 'admin_super'], true, sebagai: $super);
         self::assertTrue($this->daftar->adalahAdminSuper($kedua));
         self::assertSame(2, $this->daftar->jumlahAdminSuper());
-        $this->post(['aksi' => 'peran', 'user_id' => (string) $kedua, 'peran' => 'anggota'], true, sebagai: $super);
+        $this->post(['aksi' => 'peran', 'user' => $this->kode($kedua), 'peran' => 'anggota'], true, sebagai: $super);
         self::assertFalse($this->daftar->adalahAdminSuper($kedua));
 
         // Admin web tidak bisa dipilih di dashboard utama.
-        self::assertSame(422, $this->post(['aksi' => 'peran', 'user_id' => (string) $kedua, 'peran' => 'admin_web'], true, sebagai: $super)->getStatusCode());
+        self::assertSame(422, $this->post(['aksi' => 'peran', 'user' => $this->kode($kedua), 'peran' => 'admin_web'], true, sebagai: $super)->getStatusCode());
     }
 
     public function testTanpaTokenDitolak(): void
     {
-        self::assertSame(400, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->budi], denganToken: false)->getStatusCode());
+        self::assertSame(400, $this->post(['aksi' => 'cabut', 'user' => $this->kode($this->budi)], denganToken: false)->getStatusCode());
         self::assertSame('anggota', $this->daftar->peran($this->budi, self::LINGKUP));
     }
 
     public function testAktivitasMenampilkanWaktuSetempatDanPelaku(): void
     {
-        $this->post(['aksi' => 'peran', 'user_id' => (string) $this->budi, 'peran' => 'admin_web']);
+        $this->post(['aksi' => 'peran', 'user' => $this->kode($this->budi), 'peran' => 'admin_web']);
         $this->get();
 
         $a = $this->renderer->data['aktivitas'][0];
@@ -298,7 +312,7 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame(503, $this->get()->getStatusCode());
         self::assertSame(RiwayatAkun::PESAN_BELUM_DIPASANG, $this->renderer->data['belumSiap']);
 
-        self::assertSame(503, $this->post(['aksi' => 'cabut', 'user_id' => (string) $this->budi])->getStatusCode());
+        self::assertSame(503, $this->post(['aksi' => 'cabut', 'user' => $this->kode($this->budi)])->getStatusCode());
         self::assertSame('anggota', $this->daftar->peran($this->budi, self::LINGKUP), 'Tidak ada yang diubah.');
     }
 
@@ -363,7 +377,7 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertFalse($semua['super@contoh.com']['bisaUbahPeran'], 'Akun sendiri.');
 
         // Akun yang hanya punya akses ke website bisa dinonaktifkan dari dashboard utama.
-        $hasil = $minta('POST', $super, ['aksi' => 'aktif', 'user_id' => (string) $this->budi, 'nilai' => '0']);
+        $hasil = $minta('POST', $super, ['aksi' => 'aktif', 'user' => $this->kode($this->budi), 'nilai' => '0']);
         self::assertSame('/user', $hasil->getHeaderLine('Location'));
         self::assertFalse($this->daftar->cariId($this->budi)?->aktif);
 
@@ -374,7 +388,7 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame('KANTOR.co', $this->renderer->data['cari']);
 
         // Admin super melepas email tambahan; email utama tidak bisa dilepas.
-        $lepas = fn (string $email) => $minta('POST', $super, ['aksi' => 'lepas_email', 'user_id' => (string) $citra, 'email' => $email]);
+        $lepas = fn (string $email) => $minta('POST', $super, ['aksi' => 'lepas_email', 'user' => $this->kode($citra), 'email' => $email]);
         self::assertSame(422, $lepas('citra@lain.com')->getStatusCode());
         self::assertSame(404, $lepas('tidak@ada.com')->getStatusCode());
         self::assertSame('/user', $lepas('citra@kantor.co.id')->getHeaderLine('Location'));
@@ -467,14 +481,14 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertFalse($baris['super@contoh.com']['bisaAturWebsite'], 'Admin super sudah admin di semua website.');
 
         // Email pribadi ditolak website kantor; email kantor milik akun yang sama diterima.
-        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web']);
+        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'kantor.co.id', 'peran' => 'admin_web']);
         self::assertSame(422, $hasil->getStatusCode());
         self::assertStringContainsString('@kantor.co.id', $this->renderer->data['galat']);
         self::assertNull($this->daftar->peran($this->budi, 'kantor.co.id'));
 
         $this->daftar->email()->tambah($this->budi, 'budi@kantor.co.id');
-        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'orang@lain.com'])->getStatusCode(), 'Email bukan milik akun.');
-        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'budi@kantor.co.id']);
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'orang@lain.com'])->getStatusCode(), 'Email bukan milik akun.');
+        $hasil = $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'kantor.co.id', 'peran' => 'admin_web', 'email' => 'budi@kantor.co.id']);
         self::assertSame(302, $hasil->getStatusCode());
         self::assertSame('/user', $hasil->getHeaderLine('Location'));
         self::assertSame('admin_web', $this->daftar->peran($this->budi, 'kantor.co.id'));
@@ -486,20 +500,20 @@ final class KelolaUserHandlerTest extends TestCase
         self::assertSame('Super', $riwayat[0]['pelaku'], 'Admin super tanpa akses tersendiri ke website tampil dengan namanya.');
 
         // Ubah peran di website lain yang sudah ada (toko: Budi anggota) dan cabut.
-        $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP, 'peran' => 'admin_web']);
+        $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => self::LINGKUP, 'peran' => 'admin_web']);
         self::assertSame('admin_web', $this->daftar->peran($this->budi, self::LINGKUP));
         self::assertSame(RiwayatAkun::UBAH_PERAN, $this->riwayatAkun->untukLingkup(self::LINGKUP)[0]['peristiwa']);
-        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP, 'peran' => 'admin_super'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => self::LINGKUP, 'peran' => 'admin_super'])->getStatusCode());
 
-        $minta('POST', $super, ['aksi' => 'cabut_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP]);
+        $minta('POST', $super, ['aksi' => 'cabut_website', 'user' => $this->kode($this->budi), 'website' => self::LINGKUP]);
         self::assertNull($this->daftar->peran($this->budi, self::LINGKUP));
-        self::assertSame(404, $minta('POST', $super, ['aksi' => 'cabut_website', 'user_id' => (string) $this->budi, 'website' => self::LINGKUP])->getStatusCode());
+        self::assertSame(404, $minta('POST', $super, ['aksi' => 'cabut_website', 'user' => $this->kode($this->budi), 'website' => self::LINGKUP])->getStatusCode());
 
         // Website tidak terdaftar, pengaturan rusak, dan admin super sebagai sasaran ditolak.
-        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'asing.com', 'peran' => 'anggota'])->getStatusCode());
-        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'dashboard', 'peran' => 'anggota'])->getStatusCode());
-        self::assertSame(500, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'rusak.com', 'peran' => 'anggota'])->getStatusCode());
-        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user_id' => (string) $super, 'website' => self::LINGKUP, 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'asing.com', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'dashboard', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(500, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'rusak.com', 'peran' => 'anggota'])->getStatusCode());
+        self::assertSame(422, $minta('POST', $super, ['aksi' => 'akses_website', 'user' => $this->kode($super), 'website' => self::LINGKUP, 'peran' => 'anggota'])->getStatusCode());
     }
 
     public function testTambahUserLangsungUntukWebsite(): void
@@ -535,7 +549,7 @@ final class KelolaUserHandlerTest extends TestCase
     public function testAksesWebsiteHanyaUntukAdminSuperDiDashboardUtama(): void
     {
         // Admin web di website (tanpa daftar website) tidak bisa memakai aksi ini.
-        $hasil = $this->post(['aksi' => 'akses_website', 'user_id' => (string) $this->budi, 'website' => 'lain.com', 'peran' => 'anggota']);
+        $hasil = $this->post(['aksi' => 'akses_website', 'user' => $this->kode($this->budi), 'website' => 'lain.com', 'peran' => 'anggota']);
         self::assertSame(403, $hasil->getStatusCode());
         self::assertSame([], $this->renderer->data['websiteTersedia']);
     }
