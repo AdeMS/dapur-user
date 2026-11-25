@@ -225,7 +225,7 @@ final class ProfilTigaTest extends TestCase
         // Tampil di tab Profil Pengaturan & Privasi dan di halaman Profil, juga untuk rekan.
         $this->handler(self::WEBSITE)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['tab' => 'profil']));
         self::assertSame('Sedang cuti sampai Senin', $this->renderer->data['statusAkun']);
-        $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->budi, ['id' => (string) $this->ade]));
+        $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->budi, ['u' => (string) $this->daftar->cariId($this->ade)?->kode]));
         self::assertSame('Sedang cuti sampai Senin', $this->renderer->data['profil']['status']);
 
         // Ikut tampil di menu avatar (Identitas, sama di semua lingkup) dan di daftar user.
@@ -328,7 +328,13 @@ final class ProfilTigaTest extends TestCase
         $this->daftar->profil()->simpan($this->budi, '', ['lokasi' => 'Medan']);
         $this->daftar->profil()->simpan($this->budi, self::WEBSITE, [ProfilUser::NAMA => 'Mas Budi']);
         $lihat = fn (string $lingkup, int $id): ResponseInterface => $this->handler($lingkup, ProfilHandler::HALAMAN_PROFIL)
-            ->handle($this->permintaan('GET', $lingkup, $this->ade, ['id' => (string) $id]));
+            ->handle($this->permintaan('GET', $lingkup, $this->ade, ['u' => (string) $this->daftar->cariId($id)?->kode]));
+
+        // Alamat lama ?id=<nomor> dialihkan ke ?u=<kode akun>; nomor tidak dipakai di alamat.
+        $lama = $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['id' => (string) $this->budi]));
+        self::assertSame(302, $lama->getStatusCode());
+        self::assertStringEndsWith('?u=' . $this->daftar->cariId($this->budi)?->kode, $lama->getHeaderLine('Location'));
+        self::assertSame(404, $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['u' => (string) $this->budi]))->getStatusCode(), 'nomor akun di ?u= ditolak');
 
         self::assertSame(200, $lihat(self::WEBSITE, $this->budi)->getStatusCode());
         $profil = $this->renderer->data['profil'];
@@ -339,7 +345,8 @@ final class ProfilTigaTest extends TestCase
         // Budi tidak punya akses ke dashboard utama, jadi profilnya tidak terlihat dari sana.
         self::assertSame(404, $lihat('dashboard', $this->budi)->getStatusCode());
         self::assertTrue($this->renderer->data['tidakDitemukan']);
-        self::assertSame(404, $lihat(self::WEBSITE, 999)->getStatusCode());
+        $takAda = $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->ade, ['u' => str_repeat('Z', 22)]));
+        self::assertSame(404, $takAda->getStatusCode(), 'kode akun yang tidak ada');
 
         // Tanpa id: profil sendiri.
         $this->handler(self::WEBSITE, ProfilHandler::HALAMAN_PROFIL)->handle($this->permintaan('GET', self::WEBSITE, $this->ade));
