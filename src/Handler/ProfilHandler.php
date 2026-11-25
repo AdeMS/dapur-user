@@ -28,6 +28,7 @@ use AdeMS\Dapur\User\TokenUser;
 use AdeMS\Dapur\User\User;
 use DateTimeImmutable;
 use DateTimeZone;
+use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\Response\RedirectResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -618,16 +619,25 @@ final class ProfilHandler implements RequestHandlerInterface
     private function simpanStatus(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
     {
         $teks = is_string($isi[ProfilUser::STATUS] ?? null) ? trim($isi[ProfilUser::STATUS]) : '';
+        $json = ($isi['json'] ?? '') === '1'; // dari menu avatar / kartu Profil (diubah di tempat)
         if (mb_strlen($teks, 'UTF-8') > ProfilUser::PANJANG_STATUS_MAKS || preg_match('/[\x00-\x1f\x7f]/u', $teks) !== 0) {
+            if ($json) {
+                return new JsonResponse(['galat' => sprintf('Status paling panjang %d karakter, satu baris.', ProfilUser::PANJANG_STATUS_MAKS)], 422);
+            }
+
             return $this->galat($request, $user, 'status', sprintf('Status paling panjang %d karakter, satu baris.', ProfilUser::PANJANG_STATUS_MAKS), 422, ['statusAkun' => $teks]);
         }
 
         $belum = $this->belumSiapProfil($request, $user, 'status', false, false);
         if ($belum !== null) {
-            return $belum;
+            return $json ? new JsonResponse(['galat' => ProfilUser::PESAN_BELUM_DIPASANG], 503) : $belum;
         }
 
         $this->daftar->profil()->simpan($user->id, '', [ProfilUser::STATUS => $teks]);
+        if ($json) {
+            return new JsonResponse(['status' => $teks, 'pesan' => $teks === '' ? 'Status sudah dihapus.' : 'Status sudah disimpan.']);
+        }
+
         $sesi->simpan(self::SESI_PESAN, $teks === '' ? 'Status sudah dihapus.' : 'Status sudah disimpan.');
 
         return new RedirectResponse($this->alamatPengaturan('profil'));
