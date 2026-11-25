@@ -52,6 +52,8 @@ final class Skema
                     'nama_tengah'   => "VARCHAR(100) NOT NULL DEFAULT ''",
                     'nama_belakang' => "VARCHAR(100) NOT NULL DEFAULT ''",
                     'foto'          => "VARCHAR(64) NOT NULL DEFAULT ''",
+                    // 2.6: kode acak akun untuk alamat dan form (nomor akun tidak terlihat dari luar).
+                    'kode'          => 'CHAR(22) NULL',
                 ],
                 // 2.5: email pelaku dan sasaran saat kejadian, agar tetap benar sesudah email berganti atau akun digabung.
                 $tabel->riwayatAkun() => [
@@ -67,6 +69,7 @@ final class Skema
                     'nama_tengah'   => "TEXT NOT NULL DEFAULT ''",
                     'nama_belakang' => "TEXT NOT NULL DEFAULT ''",
                     'foto'          => "TEXT NOT NULL DEFAULT ''",
+                    'kode'          => 'TEXT NULL',
                 ],
                 $tabel->riwayatAkun() => [
                     'pelaku_email'  => "TEXT NOT NULL DEFAULT ''",
@@ -97,6 +100,7 @@ final class Skema
                 nama_tengah VARCHAR(100) NOT NULL DEFAULT '',
                 nama_belakang VARCHAR(100) NOT NULL DEFAULT '',
                 foto VARCHAR(64) NOT NULL DEFAULT '',
+                kode CHAR(22) NULL,
                 UNIQUE KEY {$q("uq_{$a}user_email")} (email)
             ) {$opsi}",
             $t->akses() => "CREATE TABLE IF NOT EXISTS {$q($t->akses())} (
@@ -213,7 +217,8 @@ final class Skema
                 nama_depan TEXT NOT NULL DEFAULT '',
                 nama_tengah TEXT NOT NULL DEFAULT '',
                 nama_belakang TEXT NOT NULL DEFAULT '',
-                foto TEXT NOT NULL DEFAULT ''
+                foto TEXT NOT NULL DEFAULT '',
+                kode TEXT NULL
             )",
             $t->akses() => "CREATE TABLE IF NOT EXISTS {$q($t->akses())} (
                 user_id INTEGER NOT NULL REFERENCES {$q($t->user())} (id) ON DELETE CASCADE,
