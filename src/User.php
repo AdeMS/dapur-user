@@ -18,7 +18,15 @@ final class User
         public readonly string $namaBelakang = '',
         /** Kode file foto akun (lihat FotoUser), kosong bila tidak ada foto. */
         public readonly string $foto = '',
+        /** Kode acak akun (2.6) untuk alamat dan form; kosong sebelum `php dapur pasang`. */
+        public readonly string $kode = '',
     ) {
+    }
+
+    /** Pengenal akun yang boleh terlihat di alamat dan form: kodenya, atau nomornya bila kode belum dibuat. */
+    public function pengenal(): string
+    {
+        return $this->kode !== '' ? $this->kode : (string) $this->id;
     }
 
     /**
