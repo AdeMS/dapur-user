@@ -108,14 +108,15 @@ $profil = $this->profil ?? (($this->tidakDitemukan ?? false) ? null : [
         </div>
         <div class="col-12 col-md-6 col-xl-7">
             <div class="card">
-                <div class="card-body">
 <?php $ubahProfil = $profil['diri'] && ($this->alamatPengaturan ?? null) ? $this->alamatPengaturan . '?tab=profil' : null ?>
-                    <div class="d-flex justify-content-between align-items-start gap-2">
-                        <h2 class="h5 card-title">Tentang <?= $this->escapeHtml($profil['nama']) ?></h2>
+                <!-- Judul kartu di card-header: garis batas jelas antara judul dan isinya. -->
+                <div class="card-header d-flex justify-content-between align-items-center gap-2 py-3">
+                    <h2 class="h5 mb-0">Tentang <?= $this->escapeHtml($profil['nama']) ?></h2>
 <?php if ($ubahProfil !== null) : ?>
-                        <a class="btn btn-sm btn-outline-secondary text-nowrap" href="<?= $this->escapeHtmlAttr($ubahProfil) ?>"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Ubah</a>
+                    <a class="btn btn-sm btn-outline-secondary text-nowrap" href="<?= $this->escapeHtmlAttr($ubahProfil) ?>"><i class="bi bi-pencil me-1" aria-hidden="true"></i>Ubah</a>
 <?php endif ?>
-                    </div>
+                </div>
+                <div class="card-body">
 <?php if ($profil['tentang'] === []) : ?>
                     <p class="text-body-secondary mb-0"><?= $profil['diri'] ? 'Anda belum mengisi bagian ini. Isi pendidikan, lokasi, keahlian, dan biografi agar rekan di website ini lebih mengenal Anda.' : 'Belum diisi.' ?></p>
 <?php else : ?>
