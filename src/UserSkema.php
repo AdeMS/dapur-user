@@ -43,7 +43,13 @@ final class UserSkema implements SkemaModul
 
     public function indeks(KonteksSkema $k): array
     {
-        return [];
+        $t    = new NamaTabel($k->awalan);
+        $nama = 'uq_' . $k->awalan . 'user_kode';
+
+        return [
+            // 2.6: kode akun unik (boleh kosong sementara, sebelum langkah 2.6-kode-user mengisinya).
+            $nama => sprintf('CREATE UNIQUE INDEX %s ON %s (kode)', $k->kutip($nama), $k->kutip($t->user())),
+        ];
     }
 
     public function langkah(KonteksSkema $k): array
@@ -54,6 +60,12 @@ final class UserSkema implements SkemaModul
                 $diubah = (new DaftarUser($k->db, new NamaTabel($k->awalan)))->perbaruiPeranLama();
 
                 return $diubah > 0 ? "peran admin lama diperbarui: {$diubah} akses" : null;
+            },
+            // 2.6: akun lama diberi kode acak untuk alamat dan form.
+            '2.6-kode-user' => static function (KonteksSkema $k): ?string {
+                $diisi = (new DaftarUser($k->db, new NamaTabel($k->awalan)))->isiKodeKosong();
+
+                return $diisi > 0 ? "kode akun dibuat: {$diisi} akun" : null;
             },
             // 2.2: email utama akun lama dicatat di tabel email, agar bisa dipakai untuk masuk.
             '2.2-email-utama' => static function (KonteksSkema $k): ?string {
