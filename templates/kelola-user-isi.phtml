@@ -34,7 +34,7 @@ $namaUser = function (array $a): string {
     $h    = '<div class="fw-semibold d-flex align-items-center gap-2">'
         . $this->partial('user::avatar', ['foto' => $a['foto'] ?? null, 'inisial' => $a['inisial'] ?? '', 'kelas' => 'user-avatar-daftar flex-shrink-0']);
     $h .= ($this->alamatProfil ?? null) !== null
-        ? '<a class="link-body-emphasis text-decoration-none" href="' . $this->escapeHtmlAttr($this->alamatProfil . '?id=' . (int) $a['id']) . '">' . $this->escapeHtml($nama) . '</a>'
+        ? '<a class="link-body-emphasis text-decoration-none" href="' . $this->escapeHtmlAttr($this->alamatProfil . '?u=' . rawurlencode((string) ($a['kode'] ?? $a['id']))) . '">' . $this->escapeHtml($nama) . '</a>'
         : '<span>' . $this->escapeHtml($nama) . '</span>';
 
     $h .= ($a['diriSendiri'] ? ' <span class="badge text-bg-secondary">Anda</span>' : '') . '</div>';
@@ -138,11 +138,11 @@ $popup = [];
 // Popup "Atur akses website" untuk satu akun (dashboard utama, admin super): akses website yang sudah ada (ubah
 // peran dan email, cabut) dan form beri akses ke website lain.
 $popupWebsite = function (array $a) use ($aksi, $csrf, $websiteTersedia, $peranWebsite, $petunjukDomain): string {
-    $id    = (int) $a['id'];
+    $id    = $this->escapeHtmlAttr((string) ($a['kode'] ?? $a['id']));
     $e     = fn (string $t): string => $this->escapeHtml($t);
     $ea    = fn (string $t): string => $this->escapeHtmlAttr($t);
     $hidden = static fn (string $aksiForm, string $host): string => $csrf . '<input type="hidden" name="aksi" value="' . $aksiForm . '">'
-        . '<input type="hidden" name="user_id" value="' . $id . '"><input type="hidden" name="website" value="' . htmlspecialchars($host, ENT_QUOTES) . '">';
+        . '<input type="hidden" name="user" value="' . $id . '"><input type="hidden" name="website" value="' . htmlspecialchars($host, ENT_QUOTES) . '">';
     $pilihPeran = function (string $nama, string $terpilih) use ($peranWebsite, $ea, $e): string {
         $h = '<select class="form-select form-select-sm" name="peran" aria-label="Peran">';
         foreach ($peranWebsite as $p => $label) {
@@ -193,7 +193,7 @@ $popupWebsite = function (array $a) use ($aksi, $csrf, $websiteTersedia, $peranW
         $beri = '<hr class="my-3"><h3 class="h6">Beri akses ke website lain</h3>'
             . '<p class="small text-body-secondary mb-2">Website yang belum bisa diakses akun ini.</p>'
             . '<form method="post" action="' . $aksi . '" class="row g-2" autocomplete="off">' . $csrf
-            . '<input type="hidden" name="aksi" value="akses_website"><input type="hidden" name="user_id" value="' . $id . '">'
+            . '<input type="hidden" name="aksi" value="akses_website"><input type="hidden" name="user" value="' . $id . '">'
             . '<div class="col-12"><label class="form-label small mb-1" for="beri-website-' . $id . '">Website</label>'
             . '<select class="form-select form-select-sm" id="beri-website-' . $id . '" name="website">' . $opsi . '</select></div>'
             . '<div class="col-12 col-sm-4"><label class="form-label small mb-1">Peran</label>' . $pilihPeran('peran', 'anggota') . '</div>'
@@ -219,7 +219,7 @@ $popupWebsite = function (array $a) use ($aksi, $csrf, $websiteTersedia, $peranW
 $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
     $item = function (string $nilaiAksi, string $label, string $ikon, array $isian = [], ?string $tanya = null, string $kelas = '') use ($aksi, $csrf, $u): string {
         $h = '<li><form method="post" action="' . $aksi . '"' . ($tanya !== null ? ' onsubmit="return confirm(' . $this->escapeHtmlAttr(json_encode($tanya)) . ')"' : '') . '>' . $csrf
-            . '<input type="hidden" name="aksi" value="' . $nilaiAksi . '"><input type="hidden" name="user_id" value="' . (int) $u['id'] . '">';
+            . '<input type="hidden" name="aksi" value="' . $nilaiAksi . '"><input type="hidden" name="user" value="' . $this->escapeHtmlAttr((string) ($u['kode'] ?? $u['id'])) . '">';
         foreach ($isian as $nama => $nilai) {
             $h .= '<input type="hidden" name="' . $nama . '" value="' . $this->escapeHtmlAttr($nilai) . '">';
         }
@@ -229,7 +229,7 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
 
     $atas = [];
     if ($u['bisaAturWebsite'] ?? false) {
-        $atas[] = '<li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#akses-website-' . (int) $u['id'] . '">'
+        $atas[] = '<li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#akses-website-' . $this->escapeHtmlAttr((string) ($u['kode'] ?? $u['id'])) . '">'
             . '<i class="bi bi-globe me-2" aria-hidden="true"></i>Atur akses website…</button></li>';
     }
     if ($u['bisaUbahPeran'] && ($u['peran'] ?? null) !== null) {
@@ -414,9 +414,9 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
 <?php if ($utama) : ?>
                             <td>
                                 <?= $namaUser($a) ?>
-                                <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?><?php if ($a['jumlahEmail'] > 1) : ?> <button type="button" class="badge text-bg-light border-0 collapsed" data-bs-toggle="collapse" data-bs-target="#akun-email-<?= (int) $a['id'] ?>" aria-expanded="false" aria-controls="akun-email-<?= (int) $a['id'] ?>">+<?= (int) $a['jumlahEmail'] - 1 ?> email</button><?php endif ?></div>
+                                <div class="small text-body-secondary"><?= $this->escapeHtml($a['email']) ?><?php if ($a['jumlahEmail'] > 1) : ?> <button type="button" class="badge text-bg-light border-0 collapsed" data-bs-toggle="collapse" data-bs-target="#akun-email-<?= $this->escapeHtmlAttr((string) ($a['kode'] ?? $a['id'])) ?>" aria-expanded="false" aria-controls="akun-email-<?= $this->escapeHtmlAttr((string) ($a['kode'] ?? $a['id'])) ?>">+<?= (int) $a['jumlahEmail'] - 1 ?> email</button><?php endif ?></div>
 <?php if ($a['jumlahEmail'] > 1) : ?>
-                                <ul class="collapse list-unstyled small mb-0 mt-1" id="akun-email-<?= (int) $a['id'] ?>">
+                                <ul class="collapse list-unstyled small mb-0 mt-1" id="akun-email-<?= $this->escapeHtmlAttr((string) ($a['kode'] ?? $a['id'])) ?>">
 <?php foreach ($a['semuaEmail'] as $e) : ?>
                                     <li class="d-flex align-items-center gap-1 mb-1">
                                         <i class="bi bi-envelope" aria-hidden="true"></i><span class="text-break"><?= $this->escapeHtml($e) ?></span>
@@ -426,7 +426,7 @@ $menuTindakan = function (array $u) use ($aksi, $csrf, $utama): string {
                                         <form method="post" action="<?= $aksi ?>" class="d-inline" onsubmit="return confirm(<?= $this->escapeHtmlAttr(json_encode('Lepas ' . $e . ' dari akun ' . $a['nama'] . '? Email ini tidak bisa dipakai login lagi.')) ?>)">
                                             <?= $csrf ?>
                                             <input type="hidden" name="aksi" value="lepas_email">
-                                            <input type="hidden" name="user_id" value="<?= (int) $a['id'] ?>">
+                                            <input type="hidden" name="user" value="<?= $this->escapeHtmlAttr((string) ($a['kode'] ?? $a['id'])) ?>">
                                             <input type="hidden" name="email" value="<?= $this->escapeHtmlAttr($e) ?>">
                                             <button type="submit" class="btn btn-sm btn-link text-danger-emphasis text-decoration-none p-0 ms-1 small" title="Lepas email ini dari akun"><i class="bi bi-x-circle me-1" aria-hidden="true"></i>Lepas</button>
                                         </form>
