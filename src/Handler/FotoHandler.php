@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AdeMS\Dapur\User\Handler;
 
 use AdeMS\Dapur\User\DaftarUser;
-use AdeMS\Dapur\User\FotoUser;
+use AdeMS\Dapur\User\PenyimpanFoto;
 use AdeMS\Dapur\User\Pintu;
 use AdeMS\Dapur\User\User;
 use Laminas\Diactoros\Response;
@@ -22,7 +22,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - foto sendiri selalu;
  * - foto akun milik user yang punya akses ke lingkup ini;
  * - foto khusus website hanya di website itu;
- * - admin super di dashboard utama melihat semua foto (ia melihat semua akun).
+ * - admin super di dashboard utama melihat semua foto (ia melihat semua akun);
+ * - foto di riwayat foto (yang sedang tidak dipakai) hanya oleh pemiliknya.
  *
  * Kode foto berubah setiap foto diganti, sehingga browser boleh menyimpannya lama.
  */
@@ -30,7 +31,7 @@ final class FotoHandler implements RequestHandlerInterface
 {
     public function __construct(
         private readonly DaftarUser $daftar,
-        private readonly FotoUser $foto,
+        private readonly PenyimpanFoto $foto,
         private readonly Pintu $pintu,
     ) {
     }
@@ -43,7 +44,10 @@ final class FotoHandler implements RequestHandlerInterface
         $kode    = $request->getAttribute('kode') ?? basename($request->getUri()->getPath());
         $pemilik = is_string($kode) ? $this->daftar->profil()->pemilikFoto($kode) : null;
         $file    = is_string($kode) ? $this->foto->file($kode) : null;
-        if ($pemilik === null || $file === null || ! $this->boleh($user, ...$pemilik)) {
+        $boleh   = $pemilik !== null
+            ? $this->boleh($user, ...$pemilik)
+            : is_string($kode) && $this->foto->pemilik($kode) === $user->id;
+        if ($file === null || ! $boleh) {
             return new EmptyResponse(404);
         }
 
