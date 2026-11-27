@@ -49,7 +49,7 @@ final class PabrikLayanan
                 $c->get(Adapter::class),
                 $c->get(DaftarUser::class),
                 self::tabel($c),
-                $c->get(FotoUser::class),
+                self::penyimpanFoto($c),
             ),
             SuratUser::class => new SuratUser(
                 $c->get(PengirimEmail::class),
@@ -106,9 +106,21 @@ final class PabrikLayanan
             self::namaWebsite($c),
             ProfilHandler::HALAMAN_PROFIL,
             $c->get(Pengaturan::class)->domainEmail,
-            $c->get(FotoUser::class),
+            self::penyimpanFoto($c),
             self::sumberLokasi($c),
         );
+    }
+
+    /**
+     * Penyimpan foto profil: layanan `PenyimpanFoto::class` bila modul lain menyediakannya (mis. adems/dapur-berkas,
+     * dengan riwayat foto), selain itu FotoUser (folder data/upload/avatar).
+     */
+    public static function penyimpanFoto(ContainerInterface $c): PenyimpanFoto
+    {
+        $penyimpan = $c->has(PenyimpanFoto::class) ? $c->get(PenyimpanFoto::class) : $c->get(FotoUser::class);
+        assert($penyimpan instanceof PenyimpanFoto);
+
+        return $penyimpan;
     }
 
     /**
@@ -116,7 +128,7 @@ final class PabrikLayanan
      */
     public static function foto(ContainerInterface $c, Pintu $pintu): FotoHandler
     {
-        return new FotoHandler($c->get(DaftarUser::class), $c->get(FotoUser::class), $pintu);
+        return new FotoHandler($c->get(DaftarUser::class), self::penyimpanFoto($c), $pintu);
     }
 
     /**
@@ -176,7 +188,7 @@ final class PabrikLayanan
             self::namaWebsite($c),
             ProfilHandler::HALAMAN_PENGATURAN,
             $c->get(Pengaturan::class)->domainEmail,
-            $c->get(FotoUser::class),
+            self::penyimpanFoto($c),
             self::sumberLokasi($c),
             $c->get(GabungAkun::class),
         );
