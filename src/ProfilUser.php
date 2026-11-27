@@ -185,6 +185,64 @@ final class ProfilUser
         return $website === [] ? null : [(int) $website[0]['user_id'], (string) $website[0]['lingkup']];
     }
 
+    /** Apakah foto ini sedang dipakai akun ini, sebagai foto akun atau foto di website mana pun. */
+    public function dipakai(int $userId, string $kode): bool
+    {
+        if (! $this->tersedia() || ! FotoUser::kodeSah($kode)) {
+            return false;
+        }
+
+        return $this->baris("SELECT id FROM {$this->tUser} WHERE id = ? AND foto = ?", [$userId, $kode]) !== []
+            || $this->baris("SELECT user_id FROM {$this->tProfil} WHERE user_id = ? AND kunci = ? AND nilai = ?", [$userId, self::FOTO, $kode]) !== [];
+    }
+
+    /**
+     * Semua kode foto yang sedang dipakai: foto akun (lingkup '') dan foto per website.
+     *
+     * @return list<array{user_id: int, lingkup: string, kode: string}>
+     */
+    public function semuaFoto(): array
+    {
+        if (! $this->tersedia()) {
+            return [];
+        }
+
+        $hasil = [];
+        foreach ($this->fotoAkun() as $id => $kode) {
+            $hasil[] = ['user_id' => $id, 'lingkup' => '', 'kode' => $kode];
+        }
+
+        foreach ($this->baris("SELECT user_id, lingkup, nilai FROM {$this->tProfil} WHERE kunci = ? AND nilai <> ''", [self::FOTO]) as $b) {
+            $hasil[] = ['user_id' => (int) $b['user_id'], 'lingkup' => (string) $b['lingkup'], 'kode' => (string) $b['nilai']];
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Mengganti kode foto lama dengan kode baru di foto akun dan foto per website milik akun ini (mis. saat foto
+     * dipindah ke penyimpan lain).
+     *
+     * @return int jumlah tempat yang diganti
+     */
+    public function gantiKodeFoto(int $userId, string $lama, string $baru): int
+    {
+        if (! $this->tersedia() || $lama === '' || $lama === $baru) {
+            return 0;
+        }
+
+        $jumlah = 0;
+        foreach ([
+            ["UPDATE {$this->tUser} SET foto = ? WHERE id = ? AND foto = ?", [$baru, $userId, $lama]],
+            ["UPDATE {$this->tProfil} SET nilai = ? WHERE user_id = ? AND kunci = ? AND nilai = ?", [$baru, $userId, self::FOTO, $lama]],
+        ] as [$sql, $parameter]) {
+            $hasil   = $this->db->query($sql, $parameter);
+            $jumlah += method_exists($hasil, 'getAffectedRows') ? (int) $hasil->getAffectedRows() : 0;
+        }
+
+        return $jumlah;
+    }
+
     /**
      * @param list<mixed> $parameter
      * @return list<array<string, mixed>>
