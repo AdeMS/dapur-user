@@ -14,8 +14,11 @@ use RuntimeException;
  * File disimpan di luar folder public (bawaan data/upload/avatar di folder inti), dengan nama kode acak 32 huruf
  * heksadesimal, dan disajikan lewat FotoHandler hanya kepada user yang login. Foto baru selalu mendapat kode baru,
  * sehingga browser boleh menyimpan foto lama selamanya.
+ *
+ * Ini penyimpan foto bawaan (tanpa riwayat): foto yang diganti atau dihapus langsung dihapus filenya. Pemeriksaan
+ * unggahan dan pembuatan avatar juga dipakai penyimpan lain lewat FotoUser::periksa() dan FotoUser::buatAvatar().
  */
-final class FotoUser
+final class FotoUser implements PenyimpanFoto
 {
     public const UKURAN_MAKS   = 2 * 1024 * 1024;
     public const SISI          = 256;
@@ -28,9 +31,23 @@ final class FotoUser
     ) {
     }
 
+    /** Pola kode foto untuk route: 32 heksadesimal (FotoUser) atau 22 huruf/angka (kode berkas). */
+    public const POLA_KODE = '[a-f0-9]{32}|[0-9A-Za-z]{22}';
+
     public static function kodeSah(mixed $kode): bool
     {
+        return is_string($kode) && preg_match('/^(?:' . self::POLA_KODE . ')$/', $kode) === 1;
+    }
+
+    /** Kode buatan FotoUser (32 heksadesimal), bukan kode penyimpan lain. */
+    public static function kodeLama(mixed $kode): bool
+    {
         return is_string($kode) && preg_match('/^[a-f0-9]{32}$/', $kode) === 1;
+    }
+
+    public function siap(): bool
+    {
+        return self::didukung() && $this->folderSiap();
     }
 
     /** Apakah fungsi gambar PHP (GD dengan WebP) tersedia. */
@@ -63,7 +80,7 @@ final class FotoUser
 
     public function file(string $kode): ?string
     {
-        if (! self::kodeSah($kode)) {
+        if (! self::kodeLama($kode)) {
             return null;
         }
 
@@ -78,7 +95,26 @@ final class FotoUser
      * @return string kode foto baru
      * @throws RuntimeException dengan pesan yang bisa ditampilkan kepada user
      */
-    public function simpan(string $fileUnggahan): string
+    public function simpan(int $userId, string $fileUnggahan): string
+    {
+        $jenis = self::periksa($fileUnggahan);
+        if (! $this->folderSiap()) {
+            throw new RuntimeException('Folder foto belum bisa ditulis oleh web server. Hubungi admin website.');
+        }
+
+        $kode = bin2hex(random_bytes(16));
+        self::buatAvatar($fileUnggahan, $jenis, $this->folder . '/' . $kode . '.webp');
+
+        return $kode;
+    }
+
+    /**
+     * Memeriksa file unggahan foto: ukuran, jenis (JPG, PNG, WebP), dan jumlah piksel.
+     *
+     * @return string jenis MIME file
+     * @throws RuntimeException dengan pesan yang bisa ditampilkan kepada user
+     */
+    public static function periksa(string $fileUnggahan): string
     {
         if (! self::didukung()) {
             throw new RuntimeException('Server ini belum bisa mengolah gambar (ekstensi PHP GD dengan WebP belum aktif).');
@@ -107,32 +143,35 @@ final class FotoUser
             throw new RuntimeException('Ukuran gambar terlalu besar; paling banyak sekitar 12 megapiksel.');
         }
 
-        if (! $this->folderSiap()) {
-            throw new RuntimeException('Folder foto belum bisa ditulis oleh web server. Hubungi admin website.');
-        }
+        return (string) $jenis;
+    }
 
-        $asli = @imagecreatefromstring((string) file_get_contents($fileUnggahan));
+    /**
+     * Membuat avatar persegi SISI x SISI berformat WebP dari gambar (diluruskan menurut EXIF, lalu metadatanya terbuang).
+     * File tujuan ditulis lewat file sementara, jadi tidak pernah setengah jadi.
+     *
+     * @throws RuntimeException dengan pesan yang bisa ditampilkan kepada user
+     */
+    public static function buatAvatar(string $file, string $jenis, string $tujuan): void
+    {
+        $asli = @imagecreatefromstring((string) file_get_contents($file));
         if ($asli === false) {
             throw new RuntimeException('File itu bukan gambar yang bisa dibaca.');
         }
 
-        $asli  = $this->putarSesuaiExif($asli, $fileUnggahan, $jenis);
-        $hasil = $this->potongPersegi($asli);
+        $asli  = self::putarSesuaiExif($asli, $file, $jenis);
+        $hasil = self::potongPersegi($asli);
         imagedestroy($asli);
 
-        $kode = bin2hex(random_bytes(16));
-        $file = $this->folder . '/' . $kode . '.webp';
-        $sementara = $file . '.tmp';
+        $sementara = $tujuan . '.tmp';
         $berhasil  = imagewebp($hasil, $sementara, 85);
         imagedestroy($hasil);
-        if (! $berhasil || ! @rename($sementara, $file)) {
+        if (! $berhasil || ! @rename($sementara, $tujuan)) {
             @unlink($sementara);
             throw new RuntimeException('Foto gagal disimpan. Coba lagi.');
         }
 
-        @chmod($file, 0660);
-
-        return $kode;
+        @chmod($tujuan, 0660);
     }
 
     /** Menghapus file foto; kode yang tidak sah atau file yang tidak ada diabaikan. */
@@ -144,8 +183,34 @@ final class FotoUser
         }
     }
 
+    /** Tanpa riwayat: foto yang tidak dipakai lagi langsung dihapus. */
+    public function lepas(string $kode): void
+    {
+        $this->hapus($kode);
+    }
+
+    public function pemilik(string $kode): ?int
+    {
+        return null;
+    }
+
+    public function adaRiwayat(): bool
+    {
+        return false;
+    }
+
+    public function riwayat(int $userId): array
+    {
+        return [];
+    }
+
+    public function buang(int $userId, string $kode): void
+    {
+        throw new RuntimeException('Riwayat foto tidak tersedia di website ini.');
+    }
+
     /** Foto dari kamera ponsel sering disimpan miring dengan catatan arah di EXIF; diluruskan sebelum EXIF dibuang. */
-    private function putarSesuaiExif(\GdImage $gambar, string $file, string $jenis): \GdImage
+    private static function putarSesuaiExif(\GdImage $gambar, string $file, string $jenis): \GdImage
     {
         if ($jenis !== 'image/jpeg' || ! function_exists('exif_read_data')) {
             return $gambar;
@@ -176,7 +241,7 @@ final class FotoUser
     }
 
     /** Bagian tengah gambar yang berbentuk persegi, diperkecil menjadi SISI x SISI piksel. */
-    private function potongPersegi(\GdImage $gambar): \GdImage
+    private static function potongPersegi(\GdImage $gambar): \GdImage
     {
         $lebar  = imagesx($gambar);
         $tinggi = imagesy($gambar);
