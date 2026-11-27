@@ -1,7 +1,7 @@
 <?php
 /**
- * Avatar user: foto profil bila ada, selain itu bola hijau berisi inisial. Gaya .user-avatar ada di
- * user::menu-user (selalu dimuat untuk user yang login).
+ * Avatar user: foto profil bila ada, selain itu (atau bila foto gagal dimuat) bola hijau berisi inisial. Gaya
+ * .user-avatar ada di user::menu-user (selalu dimuat untuk user yang login).
  *
  * Panggil: $this->partial('user::avatar', ['foto' => $alamatAtauNull, 'inisial' => 'AS', 'kelas' => '...']).
  *
@@ -12,7 +12,14 @@
 $kelas = trim('user-avatar ' . ($this->kelas ?? ''));
 ?>
 <?php if (($this->foto ?? null) !== null) : ?>
-<img class="<?= $this->escapeHtmlAttr($kelas) ?> user-avatar-foto" src="<?= $this->escapeHtmlAttr($this->foto) ?>" alt="" loading="lazy">
+<?php
+    // Foto yang tidak bisa dimuat (mis. dibuang atau dihapus lewat Berkas) diganti avatar inisial; bila foto itu
+    // dipulihkan, foto tampil lagi dengan sendirinya. Tombol "lihat foto" di sekitarnya ikut dilepas.
+    $gagal = "var s=this.nextElementSibling;s.hidden=false;this.remove();"
+        . "var b=s.closest('.user-profil-foto');if(b){b.replaceWith(s)}";
+?>
+<img class="<?= $this->escapeHtmlAttr($kelas) ?> user-avatar-foto" src="<?= $this->escapeHtmlAttr($this->foto) ?>" alt="" loading="lazy" onerror="<?= $this->escapeHtmlAttr($gagal) ?>">
+<span class="<?= $this->escapeHtmlAttr($kelas) ?>" aria-hidden="true" hidden><?= $this->escapeHtml($this->inisial ?? '') ?></span>
 <?php else : ?>
 <span class="<?= $this->escapeHtmlAttr($kelas) ?>" aria-hidden="true"><?= $this->escapeHtml($this->inisial ?? '') ?></span>
 <?php endif ?>
