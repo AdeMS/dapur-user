@@ -48,7 +48,7 @@ final class GabungAkun
         private readonly Adapter $db,
         private readonly DaftarUser $daftar,
         NamaTabel $tabel = new NamaTabel(),
-        private readonly ?FotoUser $foto = null,
+        private readonly ?PenyimpanFoto $foto = null,
     ) {
         $q                  = static fn (string $nama): string => $db->getPlatform()->quoteIdentifier($nama);
         $this->tUser        = $q($tabel->user());
@@ -161,7 +161,7 @@ final class GabungAkun
 
         // File foto dihapus sesudah database selesai, agar penggabungan yang batal tidak kehilangan foto.
         foreach ($fotoHapus as $kode) {
-            $this->foto?->hapus($kode);
+            $this->foto?->lepas($kode);
         }
 
         return $ringkasan;
@@ -250,6 +250,11 @@ final class GabungAkun
             $lingkup = (string) $x['lingkup'];
             $kunci   = (string) $x['kunci'];
             $pindah  = $lingkup === '' ? ! isset($milikA[''][$kunci]) : ! isset($milikA[$lingkup]);
+            // Foto dari riwayat foto (mis. berkas milik B) ikut terhapus bersama akun B, jadi tidak dipindah.
+            if ($pindah && $kunci === ProfilUser::FOTO && $this->foto?->pemilik((string) $x['nilai']) === $b) {
+                $pindah = false;
+            }
+
             if ($pindah) {
                 $this->jalankan(
                     "UPDATE {$this->tProfil} SET user_id = ? WHERE user_id = ? AND lingkup = ? AND kunci = ?",
