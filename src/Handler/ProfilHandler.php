@@ -10,6 +10,7 @@ use AdeMS\Dapur\User\BatasanDomain;
 use AdeMS\Dapur\User\DaftarLokasi;
 use AdeMS\Dapur\User\DaftarUser;
 use AdeMS\Dapur\User\FotoUser;
+use AdeMS\Dapur\User\PenyimpanFoto;
 use AdeMS\Dapur\User\GabungAkun;
 use AdeMS\Dapur\User\Identitas;
 use AdeMS\Dapur\User\Konteks;
@@ -78,14 +79,14 @@ final class ProfilHandler implements RequestHandlerInterface
     public const TAB_PENGATURAN = ['akun', 'profil', 'aktivitas', 'riwayat'];
 
     /** Bagian form yang ada di tab Profil (lainnya di tab Akun Saya). */
-    private const BAGIAN_PROFIL = ['foto', 'status', 'tentang', 'profil_website'];
+    private const BAGIAN_PROFIL = ['foto', 'riwayat_foto', 'status', 'tentang', 'profil_website'];
 
     /** Aksi form yang diterima tiap halaman. Halaman Profil hanya untuk dibaca. */
     private const AKSI = [
         self::HALAMAN_PROFIL     => [],
         self::HALAMAN_PENGATURAN => [
             'nama', 'sandi', 'email', 'tambah_email', 'utama_email', 'hapus_email', 'email_website',
-            'foto', 'hapus_foto', 'status', 'tentang', 'nama_website', 'gabung_akun',
+            'foto', 'hapus_foto', 'pakai_foto', 'buang_foto', 'status', 'tentang', 'nama_website', 'gabung_akun',
         ],
     ];
 
@@ -116,7 +117,7 @@ final class ProfilHandler implements RequestHandlerInterface
         private readonly string $namaWebsite = 'Dapur AdeMS',
         private readonly string $jenis = self::HALAMAN_PROFIL,
         private readonly BatasanDomain $domain = new BatasanDomain(),
-        private readonly ?FotoUser $foto = null,
+        private readonly ?PenyimpanFoto $foto = null,
         private readonly ?DaftarLokasi $lokasi = null,
         private readonly ?GabungAkun $gabung = null,
     ) {
@@ -188,6 +189,8 @@ final class ProfilHandler implements RequestHandlerInterface
             'email_website' => $this->pilihEmailWebsite($request, $user, $sesi, $isi),
             'foto'          => $this->gantiFoto($request, $user, $sesi, $isi),
             'hapus_foto'    => $this->hapusFoto($request, $user, $sesi, $isi),
+            'pakai_foto'    => $this->pakaiFoto($request, $user, $sesi, $isi),
+            'buang_foto'    => $this->buangFoto($request, $user, $sesi, $isi),
             'status'        => $this->simpanStatus($request, $user, $sesi, $isi),
             'tentang'       => $this->simpanTentang($request, $user, $sesi, $isi),
             'nama_website'  => $this->simpanNamaWebsite($request, $user, $sesi, $isi),
@@ -575,14 +578,14 @@ final class ProfilHandler implements RequestHandlerInterface
         }
 
         try {
-            $kode = $this->foto->simpan($path);
+            $kode = $this->foto->simpan($user->id, $path);
         } catch (\RuntimeException $e) {
             return $this->galat($request, $user, 'foto', $e->getMessage(), 422);
         }
 
         $lama = $this->kodeFoto($user, $website);
         $this->aturKodeFoto($user, $website, $kode);
-        $this->foto->hapus($lama);
+        $this->lepasFoto($user, $lama);
         $this->catatAkun($request, $user, RiwayatAkun::UBAH_FOTO, $website ? 'foto di website ini diganti' : 'foto akun diganti');
         $sesi->simpan(self::SESI_PESAN, $website ? 'Foto di website ini sudah diganti.' : 'Foto sudah diganti.');
 
@@ -601,13 +604,84 @@ final class ProfilHandler implements RequestHandlerInterface
         $lama = $this->kodeFoto($user, $website);
         if ($lama !== '') {
             $this->aturKodeFoto($user, $website, '');
-            $this->foto?->hapus($lama);
+            $this->lepasFoto($user, $lama);
             $this->catatAkun($request, $user, RiwayatAkun::UBAH_FOTO, $website ? 'foto di website ini dihapus' : 'foto akun dihapus');
         }
 
         $sesi->simpan(self::SESI_PESAN, $website ? 'Foto di website ini dihapus; foto akun yang dipakai.' : 'Foto sudah dihapus.');
 
         return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
+     * Memakai lagi foto dari riwayat foto akun ini, sebagai foto akun (untuk = akun) atau foto di website ini.
+     *
+     * @param array<mixed> $isi
+     */
+    private function pakaiFoto(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $website = ($isi['untuk'] ?? null) === 'website';
+        $belum   = $this->belumSiapProfil($request, $user, 'riwayat_foto', $website, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        $kode = $isi['kode'] ?? null;
+        if ($this->foto === null || ! is_string($kode) || ! FotoUser::kodeSah($kode) || $this->foto->pemilik($kode) !== $user->id) {
+            return $this->galat($request, $user, 'riwayat_foto', 'Foto itu tidak ditemukan di riwayat foto Anda.', 404);
+        }
+
+        $lama = $this->kodeFoto($user, $website);
+        if ($lama !== $kode) {
+            $this->aturKodeFoto($user, $website, $kode);
+            $this->lepasFoto($user, $lama);
+            $this->catatAkun($request, $user, RiwayatAkun::UBAH_FOTO, $website ? 'foto di website ini diganti dari riwayat foto' : 'foto akun diganti dari riwayat foto');
+        }
+
+        $sesi->simpan(self::SESI_PESAN, $website ? 'Foto di website ini sudah diganti.' : 'Foto sudah diganti.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /**
+     * Membuang foto dari riwayat foto akun ini (ke tempat sampah berkas). Foto yang sedang dipakai, sebagai foto akun
+     * atau foto di website mana pun, tidak bisa dibuang.
+     *
+     * @param array<mixed> $isi
+     */
+    private function buangFoto(ServerRequestInterface $request, User $user, Sesi $sesi, array $isi): ResponseInterface
+    {
+        $belum = $this->belumSiapProfil($request, $user, 'riwayat_foto', false, false);
+        if ($belum !== null) {
+            return $belum;
+        }
+
+        $kode = $isi['kode'] ?? null;
+        if ($this->foto === null || ! is_string($kode) || ! FotoUser::kodeSah($kode) || $this->foto->pemilik($kode) !== $user->id) {
+            return $this->galat($request, $user, 'riwayat_foto', 'Foto itu tidak ditemukan di riwayat foto Anda.', 404);
+        }
+
+        if ($this->daftar->profil()->dipakai($user->id, $kode)) {
+            return $this->galat($request, $user, 'riwayat_foto', 'Foto itu sedang dipakai sebagai foto profil, jadi tidak bisa dibuang. Ganti dulu fotonya.', 422);
+        }
+
+        try {
+            $this->foto->buang($user->id, $kode);
+        } catch (\RuntimeException $e) {
+            return $this->galat($request, $user, 'riwayat_foto', $e->getMessage(), 422);
+        }
+
+        $sesi->simpan(self::SESI_PESAN, 'Foto dibuang dari riwayat foto. Foto itu masih bisa dipulihkan dari Tempat sampah di Berkas.');
+
+        return new RedirectResponse($this->alamatPengaturan('profil'));
+    }
+
+    /** Foto lama yang tidak dipakai lagi; tetap disimpan bila masih dipakai di tempat lain (mis. foto website). */
+    private function lepasFoto(User $user, string $kode): void
+    {
+        if ($kode !== '' && $this->foto !== null && ! $this->daftar->profil()->dipakai($user->id, $kode)) {
+            $this->foto->lepas($kode);
+        }
     }
 
     /**
@@ -768,7 +842,7 @@ final class ProfilHandler implements RequestHandlerInterface
             return $this->galat($request, $user, $bagian, 'Profil per website hanya bisa diatur di website itu.', 400);
         }
 
-        if ($perluFolder && ($this->foto === null || ! FotoUser::didukung() || ! $this->foto->folderSiap())) {
+        if ($perluFolder && ($this->foto === null || ! $this->foto->siap())) {
             return $this->galat($request, $user, $bagian, 'Foto belum bisa diunggah: folder foto belum bisa ditulis oleh web server. Hubungi admin website.', 503);
         }
 
@@ -870,7 +944,8 @@ final class ProfilHandler implements RequestHandlerInterface
 
         return [
             'profilTersedia' => $tersedia,
-            'fotoSiap'       => $tersedia && $this->foto !== null && FotoUser::didukung() && $this->foto->folderSiap(),
+            'fotoSiap'       => $tersedia && $this->foto !== null && $this->foto->siap(),
+            'riwayatFoto'    => $tersedia && $this->foto !== null && $this->foto->adaRiwayat() ? $this->riwayatFoto($user, $website) : null,
             'fotoAkun'       => $user->foto === '' ? null : $this->pintu->alamatFoto($user->foto),
             'inisialAkun'    => $user->inisial(),
             'namaDepan'      => $user->namaDepan,
@@ -887,6 +962,32 @@ final class ProfilHandler implements RequestHandlerInterface
             'namaWebsite'    => $website[ProfilUser::NAMA] ?? '',
             'lingkup'        => $lingkup,
         ];
+    }
+
+    /**
+     * Riwayat foto akun untuk pemilih "Pilih dari foto sebelumnya".
+     *
+     * @param array<string, string>|null $website profil akun di website ini (null di dashboard utama)
+     * @return list<array{kode: string, url: string, nama: string, waktu: string, akun: bool, website: bool}>
+     */
+    private function riwayatFoto(User $user, ?array $website): array
+    {
+        assert($this->foto !== null);
+        $fotoWebsite = $website[ProfilUser::FOTO] ?? '';
+        $hasil       = [];
+        foreach ($this->foto->riwayat($user->id) as $f) {
+            $waktu   = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $f['waktu'], new DateTimeZone('UTC'));
+            $hasil[] = [
+                'kode'    => $f['kode'],
+                'url'     => $this->pintu->alamatFoto($f['kode']),
+                'nama'    => $f['nama'],
+                'waktu'   => $waktu === false ? $f['waktu'] : $waktu->setTimezone($this->zonaWaktu)->format('Y-m-d H:i'),
+                'akun'    => $f['kode'] === $user->foto,
+                'website' => $fotoWebsite !== '' && $f['kode'] === $fotoWebsite,
+            ];
+        }
+
+        return $hasil;
     }
 
     private static function jumlah(mixed $nilai): int
