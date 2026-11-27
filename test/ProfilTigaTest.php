@@ -12,6 +12,7 @@ use AdeMS\Dapur\User\Handler\ProfilHandler;
 use AdeMS\Dapur\User\Identitas;
 use AdeMS\Dapur\User\Middleware\WajibMasukMiddleware;
 use AdeMS\Dapur\User\PembatasPercobaan;
+use AdeMS\Dapur\User\PenyimpanFoto;
 use AdeMS\Dapur\User\PenyajiDasar;
 use AdeMS\Dapur\User\Pintu;
 use AdeMS\Dapur\User\ProfilUser;
@@ -43,7 +44,7 @@ final class ProfilTigaTest extends TestCase
     private DaftarUser $daftar;
     private RendererUji $renderer;
     private SesiLarik $sesi;
-    private FotoUser $foto;
+    private PenyimpanFoto $foto;
     private string $folder;
     private int $ade;
     private int $budi;
@@ -72,6 +73,62 @@ final class ProfilTigaTest extends TestCase
             is_dir($f) ? rmdir($f) : unlink($f);
         }
         @rmdir($this->folder);
+    }
+
+    public function testRiwayatFotoPakaiDanBuang(): void
+    {
+        $this->foto = new PenyimpanRiwayatUji(new FotoUser($this->folder . '/avatar'));
+
+        self::assertSame(302, $this->unggah('dashboard', 'akun')->getStatusCode());
+        $pertama = (string) $this->daftar->cariId($this->ade)?->foto;
+        self::assertSame(302, $this->unggah('dashboard', 'akun')->getStatusCode());
+        $kedua = (string) $this->daftar->cariId($this->ade)?->foto;
+        self::assertNotSame($pertama, $kedua);
+        self::assertNotNull($this->foto->file($pertama), 'Foto lama tetap di riwayat, tidak dihapus.');
+
+        $this->handler('dashboard')->handle($this->permintaan('GET', 'dashboard', $this->ade, ['tab' => 'profil']));
+        $riwayat = $this->renderer->data['riwayatFoto'];
+        self::assertSame([$kedua, $pertama], array_column($riwayat, 'kode'));
+        self::assertSame([true, false], array_column($riwayat, 'akun'));
+        self::assertSame('/foto/' . $pertama, $riwayat[1]['url']);
+
+        $kirim = fn (string $lingkup, array $isi, int $sebagai = 0): ResponseInterface
+            => $this->handler($lingkup)->handle($this->permintaan('POST', $lingkup, $sebagai ?: $this->ade, $isi));
+
+        // Pakai lagi foto pertama untuk akun, lalu juga untuk website.
+        self::assertSame(302, $kirim('dashboard', ['aksi' => 'pakai_foto', 'kode' => $pertama, 'untuk' => 'akun'])->getStatusCode());
+        self::assertSame($pertama, $this->daftar->cariId($this->ade)?->foto);
+        self::assertSame(302, $kirim(self::WEBSITE, ['aksi' => 'pakai_foto', 'kode' => $pertama, 'untuk' => 'website'])->getStatusCode());
+        self::assertSame($pertama, $this->daftar->profil()->ambil($this->ade, self::WEBSITE)[ProfilUser::FOTO]);
+        self::assertNotNull($this->foto->file($kedua), 'Foto yang diganti tetap di riwayat.');
+
+        // Foto yang dipakai tidak bisa dibuang; foto lain bisa.
+        self::assertSame(422, $kirim('dashboard', ['aksi' => 'buang_foto', 'kode' => $pertama])->getStatusCode());
+        self::assertSame('riwayat_foto', $this->renderer->data['galatBagian']);
+        self::assertSame('profil', $this->renderer->data['tab']);
+        self::assertSame(302, $kirim('dashboard', ['aksi' => 'buang_foto', 'kode' => $kedua])->getStatusCode());
+        self::assertSame([$pertama], array_column($this->foto->riwayat($this->ade), 'kode'));
+
+        // Foto milik akun lain tidak bisa dipakai atau dibuang.
+        self::assertSame(404, $kirim('dashboard', ['aksi' => 'pakai_foto', 'kode' => $pertama, 'untuk' => 'akun'], $this->budi)->getStatusCode());
+        self::assertSame(404, $kirim('dashboard', ['aksi' => 'buang_foto', 'kode' => 'bukankodeyangbenar'])->getStatusCode());
+
+        // Foto riwayat yang tidak dipakai hanya terlihat oleh pemiliknya.
+        self::assertSame(302, $this->unggah('dashboard', 'akun')->getStatusCode());
+        $ketiga = (string) $this->daftar->cariId($this->ade)?->foto;
+        self::assertSame(302, $kirim('dashboard', ['aksi' => 'pakai_foto', 'kode' => $pertama, 'untuk' => 'akun'])->getStatusCode());
+        $lihat = fn (int $sebagai): int => (new FotoHandler($this->daftar, $this->foto, $this->pintu(self::WEBSITE)))
+            ->handle($this->permintaan('GET', self::WEBSITE, $sebagai)->withAttribute('kode', $ketiga))->getStatusCode();
+        self::assertSame(200, $lihat($this->ade));
+        self::assertSame(404, $lihat($this->budi));
+    }
+
+    public function testTanpaRiwayatTidakAdaPilihanFotoSebelumnya(): void
+    {
+        $this->handler('dashboard')->handle($this->permintaan('GET', 'dashboard', $this->ade, ['tab' => 'profil']));
+        self::assertNull($this->renderer->data['riwayatFoto']);
+        self::assertSame(400, $this->handler('dashboard')->handle($this->permintaan('POST', 'dashboard', $this->ade, ['aksi' => 'pakai_foto', 'kode' => str_repeat('a', 32), 'untuk' => 'website']))->getStatusCode());
+        self::assertSame(404, $this->handler('dashboard')->handle($this->permintaan('POST', 'dashboard', $this->ade, ['aksi' => 'buang_foto', 'kode' => str_repeat('a', 32)]))->getStatusCode());
     }
 
     private function pintu(string $lingkup): Pintu
@@ -394,16 +451,79 @@ final class ProfilTigaTest extends TestCase
 
         // Budi hanya anggota kantor.co.id: fotonya tidak terlihat oleh Citra di toko.com, tetapi terlihat oleh admin
         // super di dashboard utama (ia melihat semua akun).
-        $milikBudi = $this->foto->simpan(FotoUserTest::gambar($this->folder . '/budi.png', 80, 80));
+        $milikBudi = $this->foto->simpan(0, FotoUserTest::gambar($this->folder . '/budi.png', 80, 80));
         $this->daftar->aturFoto($this->budi, $milikBudi);
         self::assertSame(404, $minta('toko.com', $citra, $milikBudi)->getStatusCode());
         self::assertSame(200, $minta('dashboard', $this->ade, $milikBudi)->getStatusCode());
 
         // Foto khusus website hanya di website itu.
-        $fotoKantor = $this->foto->simpan(FotoUserTest::gambar($this->folder . '/kantor.png', 80, 80));
+        $fotoKantor = $this->foto->simpan(0, FotoUserTest::gambar($this->folder . '/kantor.png', 80, 80));
         $this->daftar->profil()->simpan($this->budi, self::WEBSITE, [ProfilUser::FOTO => $fotoKantor]);
         $this->daftar->tambahAkses($this->budi, 'toko.com', DaftarUser::PERAN_ANGGOTA);
         self::assertSame(200, $minta(self::WEBSITE, $this->ade, $fotoKantor)->getStatusCode());
         self::assertSame(404, $minta('toko.com', $citra, $fotoKantor)->getStatusCode());
+    }
+}
+
+/** Penyimpan foto uji dengan riwayat: seperti FotoUser, tetapi foto yang diganti tetap disimpan. */
+final class PenyimpanRiwayatUji implements PenyimpanFoto
+{
+    /** @var array<string, array{user: int, waktu: string}> */
+    private array $milik = [];
+
+    private int $urutan = 0;
+
+    public function __construct(private readonly FotoUser $foto)
+    {
+    }
+
+    public function siap(): bool
+    {
+        return $this->foto->siap();
+    }
+
+    public function simpan(int $userId, string $fileUnggahan): string
+    {
+        $kode               = $this->foto->simpan($userId, $fileUnggahan);
+        $this->milik[$kode] = ['user' => $userId, 'waktu' => sprintf('2026-11-27 10:00:%02d', ++$this->urutan)];
+
+        return $kode;
+    }
+
+    public function file(string $kode): ?string
+    {
+        return isset($this->milik[$kode]) ? $this->foto->file($kode) : null;
+    }
+
+    public function lepas(string $kode): void
+    {
+    }
+
+    public function pemilik(string $kode): ?int
+    {
+        return $this->milik[$kode]['user'] ?? null;
+    }
+
+    public function adaRiwayat(): bool
+    {
+        return true;
+    }
+
+    public function riwayat(int $userId): array
+    {
+        $hasil = [];
+        foreach ($this->milik as $kode => $m) {
+            if ($m['user'] === $userId) {
+                $hasil[] = ['kode' => (string) $kode, 'nama' => 'Foto ' . $kode, 'waktu' => $m['waktu']];
+            }
+        }
+
+        return array_reverse($hasil);
+    }
+
+    public function buang(int $userId, string $kode): void
+    {
+        unset($this->milik[$kode]);
+        $this->foto->hapus($kode);
     }
 }
