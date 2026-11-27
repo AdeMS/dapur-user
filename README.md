@@ -47,6 +47,17 @@ vendor/bin/dapur-user buat-admin admin@contoh.com --nama="Nama Lengkap"
 [adems/dapur-database](https://github.com/AdeMS/dapur-database)). Pada Dapur AdeMS sebelum 2.10, pakai
 `vendor/bin/dapur-user pasang`, yang hanya memasang tabel modul ini.
 
+### Memperbarui dari 2.6 ke 2.7
+
+Penyimpanan foto profil kini bisa diganti modul lain lewat interface `PenyimpanFoto` (lihat
+[Foto profil](#foto-profil)). Tanpa modul lain, foto tetap disimpan di `data/upload/avatar` seperti 2.6.
+
+Bila [adems/dapur-berkas](https://github.com/AdeMS/dapur-berkas) 1.1 terpasang (ikut bersama Dashboard 2.10), foto asli
+disimpan sebagai berkas di folder **Foto Profil** milik akun, dan tab Profil mendapat pilihan **Pilih dari foto
+sebelumnya**. Kode foto berkas berbentuk 22 huruf dan angka, sehingga modul yang memasang alamat
+`<alamat dasar>/foto/<kode>` harus menerima pola `FotoUser::POLA_KODE` (Dashboard 2.10 sudah). Tanpa dapur-berkas,
+tidak ada perubahan tabel dan tidak perlu `php dapur pasang`.
+
 ### Memperbarui dari 2.5 ke 2.6
 
 Setiap akun kini punya **kode acak** (22 huruf dan angka) yang dipakai di alamat dan form, menggantikan nomor akun:
@@ -317,10 +328,23 @@ menghapusnya. Perubahan status tidak dicatat di riwayat akun, karena bisa sering
 
 Foto diunggah di Pengaturan & Privasi: JPG, PNG, atau WebP paling besar 2 MB. Foto dibuat ulang dengan ekstensi PHP
 GD menjadi gambar persegi 256 piksel berformat WebP, sehingga metadata seperti EXIF dan lokasi GPS ikut terbuang.
-File disimpan di luar folder public (pengaturan `folder_foto`, bawaan `data/upload/avatar` di folder inti, izin
-`2770`) dengan nama acak, dan disajikan lewat `<alamat dasar>/foto/<kode>` hanya kepada user yang login dan berbagi
-lingkup dengan pemilik foto. Admin super di dashboard utama melihat semua foto. Foto baru selalu mendapat nama baru,
-sehingga browser boleh menyimpannya lama, dan foto lama dihapus.
+Foto disajikan lewat `<alamat dasar>/foto/<kode>` hanya kepada user yang login dan berbagi lingkup dengan pemilik foto.
+Admin super di dashboard utama melihat semua foto. Foto baru selalu mendapat kode baru, sehingga browser boleh
+menyimpannya lama.
+
+**Tempat penyimpanannya** ditentukan interface `PenyimpanFoto`:
+
+| Penyimpan | Dipakai bila | Foto asli | Riwayat foto |
+|---|---|---|---|
+| `FotoUser` (bawaan) | tidak ada layanan `PenyimpanFoto::class` di container | tidak disimpan; hanya versi 256 piksel di `data/upload/avatar` (pengaturan `folder_foto`, izin `2770`); foto lama dihapus | tidak ada |
+| `FotoBerkas` dari [adems/dapur-berkas](https://github.com/AdeMS/dapur-berkas) 1.1 | dapur-berkas terpasang | disimpan apa adanya di folder **Foto Profil** di Berkas Saya, ikut kuota | ada |
+
+Dengan riwayat foto, menu foto di tab Profil punya pilihan **Pilih dari foto sebelumnya**: foto lama bisa dipakai lagi
+sebagai foto akun atau foto di website ini, atau dibuang ke tempat sampah berkas. Foto yang sedang dipakai, sebagai
+foto akun atau foto di website mana pun, tidak bisa dibuang. Foto di riwayat yang sedang tidak dipakai hanya bisa
+dilihat pemiliknya. **Hapus foto** di menu foto hanya melepas foto dari profil; fotonya tetap di riwayat.
+
+Modul lain bisa memasang penyimpan sendiri dengan mendaftarkan factory untuk `AdeMS\Dapur\User\PenyimpanFoto::class`.
 
 ### Saran kota untuk Lokasi
 
