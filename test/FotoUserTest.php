@@ -55,7 +55,7 @@ final class FotoUserTest extends TestCase
     public function testFotoDibuatUlangPersegiWebp(): void
     {
         foreach (['png', 'jpeg', 'webp'] as $format) {
-            $kode = $this->foto->simpan(self::gambar($this->folder . '/asli.' . $format, 600, 300, $format));
+            $kode = $this->foto->simpan(0, self::gambar($this->folder . '/asli.' . $format, 600, 300, $format));
             self::assertTrue(FotoUser::kodeSah($kode));
             $file = $this->foto->file($kode);
             self::assertNotNull($file);
@@ -68,7 +68,7 @@ final class FotoUserTest extends TestCase
 
     public function testHapus(): void
     {
-        $kode = $this->foto->simpan(self::gambar($this->folder . '/asli.png', 50, 50));
+        $kode = $this->foto->simpan(0, self::gambar($this->folder . '/asli.png', 50, 50));
         $this->foto->hapus($kode);
         self::assertNull($this->foto->file($kode));
         $this->foto->hapus('../../etc/passwd');
@@ -79,7 +79,7 @@ final class FotoUserTest extends TestCase
     {
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('JPG, PNG, atau WebP');
-        $this->foto->simpan(self::gambar($this->folder . '/asli.gif', 50, 50, 'gif'));
+        $this->foto->simpan(0, self::gambar($this->folder . '/asli.gif', 50, 50, 'gif'));
     }
 
     public function testBukanGambarDitolak(): void
@@ -87,7 +87,7 @@ final class FotoUserTest extends TestCase
         @mkdir($this->folder, 0777, true);
         file_put_contents($this->folder . '/palsu.png', '<?php echo "bukan gambar";');
         $this->expectException(RuntimeException::class);
-        $this->foto->simpan($this->folder . '/palsu.png');
+        $this->foto->simpan(0, $this->folder . '/palsu.png');
     }
 
     public function testFileTerlaluBesarDitolak(): void
@@ -97,6 +97,6 @@ final class FotoUserTest extends TestCase
         file_put_contents($file, str_repeat("\0", FotoUser::UKURAN_MAKS), FILE_APPEND);
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('2 MB');
-        $this->foto->simpan($file);
+        $this->foto->simpan(0, $file);
     }
 }
