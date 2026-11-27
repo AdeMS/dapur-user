@@ -59,11 +59,13 @@ $profilWeb    = $this->profilWebsite ?? null;
 $isianTentang = $this->isianTentang ?? [];
 $tentangIsi   = $this->tentang ?? [];
 $alamatLokasi = $this->alamatLokasi ?? null;
+// Riwayat foto (bila penyimpan foto menyimpannya, mis. adems/dapur-berkas): null = tidak tersedia.
+$riwayatFoto  = $this->riwayatFoto ?? null;
 // Foto yang bisa diklik (seperti foto profil di aplikasi chat): menu Lihat foto, Ambil foto (kamera, hanya bila
 // browser mendukung), Unggah foto, dan Hapus foto. Unggahan dikirim langsung saat file dipilih. $untuk 'akun' atau
 // 'website'; $foto = alamat foto yang sedang tampil (bisa foto akun di bagian website); $adaSendiri = ada foto yang
 // bisa dihapus di bagian ini.
-$pemilihFoto = function (string $untuk, ?string $foto, bool $adaSendiri) use (&$aksi, &$csrf): string {
+$pemilihFoto = function (string $untuk, ?string $foto, bool $adaSendiri) use (&$aksi, &$csrf, $riwayatFoto): string {
     $id     = 'pengaturan-foto-' . $untuk;
     $avatar = $this->partial('user::avatar', ['foto' => $foto, 'inisial' => $this->inisialAkun ?? $this->user->inisial(), 'kelas' => 'user-pengaturan-avatar']);
     $h  = '<div class="dropdown user-foto-pemilih">'
@@ -77,6 +79,9 @@ $pemilihFoto = function (string $untuk, ?string $foto, bool $adaSendiri) use (&$
     }
     $h .= '<li class="user-foto-kamera d-none"><button type="button" class="dropdown-item" data-user-foto-kamera="' . $id . '"><i class="bi bi-camera me-2" aria-hidden="true"></i>Ambil foto</button></li>'
         . '<li><label class="dropdown-item" for="' . $id . '" role="button"><i class="bi bi-folder2-open me-2" aria-hidden="true"></i>Unggah foto</label></li>';
+    if ($riwayatFoto !== null && $riwayatFoto !== []) {
+        $h .= '<li><button type="button" class="dropdown-item" data-user-foto-riwayat="' . $untuk . '"><i class="bi bi-images me-2" aria-hidden="true"></i>Pilih dari foto sebelumnya</button></li>';
+    }
     if ($adaSendiri) {
         $h .= '<li><hr class="dropdown-divider"></li>'
             . '<li><button type="submit" class="dropdown-item text-danger" form="' . $id . '-hapus"><i class="bi bi-trash me-2" aria-hidden="true"></i>Hapus foto</button></li>';
@@ -86,7 +91,8 @@ $pemilihFoto = function (string $untuk, ?string $foto, bool $adaSendiri) use (&$
         . '<input type="hidden" name="aksi" value="foto"><input type="hidden" name="untuk" value="' . $untuk . '">'
         . '<input type="file" id="' . $id . '" name="foto" accept="image/jpeg,image/png,image/webp" data-user-foto-unggah></form>';
     if ($adaSendiri) {
-        $h .= '<form method="post" action="' . $aksi . '" id="' . $id . '-hapus" class="d-none" onsubmit="return confirm(\'Hapus foto ini?\')">' . $csrf
+        $tanya = $riwayatFoto !== null ? 'Lepas foto ini dari profil? Foto tetap ada di riwayat foto.' : 'Hapus foto ini?';
+        $h .= '<form method="post" action="' . $aksi . '" id="' . $id . '-hapus" class="d-none" onsubmit="return confirm(\'' . $tanya . '\')">' . $csrf
             . '<input type="hidden" name="aksi" value="hapus_foto"><input type="hidden" name="untuk" value="' . $untuk . '"></form>';
     }
 
@@ -379,7 +385,7 @@ $gabungTampil = $gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun[
                 <p class="small text-body-secondary mb-4">Foto dan isian ini tampil di halaman Profil Anda dan bisa dilihat rekan di website yang sama dengan Anda.</p>
                 <section aria-labelledby="pengaturan-judul-foto">
                     <h3 class="h6" id="pengaturan-judul-foto">Foto</h3>
-<?php if ($galatDi('foto')) : ?>
+<?php if ($galatDi('foto') || $galatDi('riwayat_foto')) : ?>
                 <div class="alert alert-danger" role="alert"><?= $this->escapeHtml($this->galat) ?></div>
 <?php endif ?>
                 <div class="d-flex flex-wrap align-items-center gap-3">
@@ -703,6 +709,56 @@ $gabungTampil = $gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun[
         </div>
     </div>
 <?php endif ?>
+<?php if ($profilSiap && $riwayatFoto !== null && $riwayatFoto !== []) : ?>
+    <div class="modal fade" id="user-foto-popup-riwayat" tabindex="-1" aria-labelledby="user-foto-judul-riwayat" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="user-foto-judul-riwayat">Foto Sebelumnya</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-body-secondary">Foto asli tersimpan di folder <strong>Foto Profil</strong> di Berkas Anda. Foto yang sedang dipakai tidak bisa dibuang.</p>
+                    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 g-3">
+<?php foreach ($riwayatFoto as $f) : ?>
+                        <div class="col">
+                            <div class="card h-100 text-center user-foto-riwayat-kartu">
+                                <img src="<?= $this->escapeHtmlAttr($f['url']) ?>" class="card-img-top" alt="<?= $this->escapeHtmlAttr($f['nama']) ?>" loading="lazy">
+                                <div class="card-body p-2">
+                                    <div class="small text-body-secondary"><?= $this->escapeHtml($f['waktu']) ?></div>
+<?php if ($f['akun']) : ?>
+                                    <span class="badge text-bg-success">Foto akun</span>
+<?php endif ?>
+<?php if ($f['website']) : ?>
+                                    <span class="badge text-bg-info">Website ini</span>
+<?php endif ?>
+                                </div>
+                                <div class="card-footer p-2 d-flex gap-1 justify-content-center">
+                                    <form method="post" action="<?= $aksi ?>">
+                                        <?= $csrf ?>
+                                        <input type="hidden" name="aksi" value="pakai_foto">
+                                        <input type="hidden" name="kode" value="<?= $this->escapeHtmlAttr($f['kode']) ?>">
+                                        <input type="hidden" name="untuk" value="akun" data-user-foto-untuk>
+                                        <button type="submit" class="btn btn-sm btn-success">Pakai</button>
+                                    </form>
+<?php if (! $f['akun'] && ! $f['website']) : ?>
+                                    <form method="post" action="<?= $aksi ?>" onsubmit="return confirm('Buang foto ini dari riwayat foto? Foto masuk Tempat sampah di Berkas dan masih bisa dipulihkan.')">
+                                        <?= $csrf ?>
+                                        <input type="hidden" name="aksi" value="buang_foto">
+                                        <input type="hidden" name="kode" value="<?= $this->escapeHtmlAttr($f['kode']) ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Buang ke tempat sampah" aria-label="Buang"><i class="bi bi-trash"></i></button>
+                                    </form>
+<?php endif ?>
+                                </div>
+                            </div>
+                        </div>
+<?php endforeach ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endif ?>
 <?php if ($profilSiap && $fotoSiap) : ?>
     <div class="modal fade" id="user-foto-popup-lihat" tabindex="-1" aria-labelledby="user-foto-judul-lihat" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -886,6 +942,16 @@ $gabungTampil = $gabungAkun !== null && ($gabungAkun['tersedia'] || $gabungAkun[
                 }
                 galat(masukan.id, '');
                 masukan.form.submit();
+            });
+        });
+
+        // Pilih dari foto sebelumnya: jendela yang sama untuk foto akun dan foto website; tujuannya dicatat di form.
+        const popupRiwayat = document.getElementById('user-foto-popup-riwayat');
+        document.querySelectorAll('[data-user-foto-riwayat]').forEach((tombol) => {
+            tombol.addEventListener('click', () => {
+                popupRiwayat.querySelectorAll('[data-user-foto-untuk]').forEach((el) => { el.value = tombol.dataset.userFotoRiwayat; });
+                popupRiwayat.querySelector('.modal-title').textContent = tombol.dataset.userFotoRiwayat === 'website' ? 'Foto Sebelumnya untuk Website Ini' : 'Foto Sebelumnya';
+                bootstrap.Modal.getOrCreateInstance(popupRiwayat).show();
             });
         });
 
